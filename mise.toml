@@ -16,3 +16,5 @@ buf = "1.75.0"
 protoc-gen-go = "1.36.12"
 # make bump tags the release with svu; the Makefile checks this release.
 svu = "3.4.1"
+# make deb builds the .deb with nFPM.
+nfpm = "2.48.0"

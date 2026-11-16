@@ -1,0 +1,11 @@
+# The web UI's TypeScript code (make web-generate, in the nsl machine): the
+# messages and the service descriptor from protoc-gen-es, which package.json
+# pins, so no plugin comes from a registry. The input is the repository's buf
+# workspace (../buf.yaml); hearth's options file comes along as an import.
+version: v2
+plugins:
+  - local: node_modules/.bin/protoc-gen-es
+    out: src/gen
+    include_imports: true
+    opt:
+      - target=ts

@@ -68,6 +68,16 @@
       "why": "release-and-publication: publication, the installed files of the frostyard-frostmarks package"
     },
     {
+      "glob": "internal/cmd/stage/**",
+      "level": "L1",
+      "why": "release-and-publication: publication, the install tree of the frostyard-frostmarks package, its files and their modes"
+    },
+    {
+      "glob": "internal/cmd/debcheck/**",
+      "level": "L1",
+      "why": "release-and-publication: publication, the check that the built package writes only /usr and runs no script"
+    },
+    {
       "glob": "proto/frostyard/frostmarks/v1/marks.proto",
       "level": "L1",
       "why": "permission-checks: auth, the permission, effect and exposure of each of the 11 RPCs"
@@ -88,6 +98,11 @@
       "why": "permission-checks: auth, the private socket acts as the local user, which is the trust boundary"
     },
     {
+      "glob": "cmd/frostmarksd/lodge.go",
+      "level": "L1",
+      "why": "permission-checks: auth, the user id that lodge's app socket admits, which is the trust boundary of Lodge-Principal and Lodge-Grant"
+    },
+    {
       "glob": "mise.toml",
       "level": "L1",
       "why": "supply-chain: supply chain, the tool pins that CI installs"
@@ -106,6 +121,21 @@
       "glob": "go.sum",
       "level": "L1",
       "why": "supply-chain: supply chain, the checksums of the Go modules"
+    },
+    {
+      "glob": "web/package.json",
+      "level": "L1",
+      "why": "supply-chain: the web UI's dependencies and the protoc-gen-es that writes web/src/gen"
+    },
+    {
+      "glob": "web/pnpm-lock.yaml",
+      "level": "L1",
+      "why": "supply-chain: the web UI's locked dependencies, which the release bundles into the package"
+    },
+    {
+      "glob": "web/pnpm-workspace.yaml",
+      "level": "L1",
+      "why": "supply-chain: pnpm's install rules for the web UI, the build scripts that it allows"
     },
     {
       "glob": "buf.yaml",

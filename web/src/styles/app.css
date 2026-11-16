@@ -1,0 +1,13 @@
+/* Tailwind entry. The look comes from @frostyard/lodge-ui, the suite's UI
+   package (lodge docs/specs/ui-package.md): its tokens, accents, theme, base
+   and fonts. The app adds no colour of its own. */
+@import "tailwindcss";
+@import "@frostyard/lodge-ui/tokens.css";
+@import "@frostyard/lodge-ui/accents.css";
+@import "@frostyard/lodge-ui/theme.css";
+@import "@frostyard/lodge-ui/base.css";
+@import "@frostyard/lodge-ui/fonts.css";
+
+/* Tailwind v4 does not scan node_modules, so the utilities of the package's
+   components are found here. */
+@source "../../node_modules/@frostyard/lodge-ui/src";

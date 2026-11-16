@@ -4,7 +4,8 @@ frostmarks is frostyard's bookmark manager: a daemon `frostmarksd`, a CLI
 `marksctl` and a stdio MCP server (`marksctl mcp`), built on the toolkit hearth
 (frostyard/core
 [ADR-0085](https://github.com/frostyard/core/blob/main/docs/adr/0085-build-new-first-party-apps-on-hearth-with-lodge-as-their-hub.md)).
-It works with no lodge; a lodge app comes in a later phase. Start at
+It works with no lodge, and it is a lodge app too: a web UI, a save page and
+lodge's app socket. Start at
 [docs/README.md](docs/README.md). The design is in
 [docs/design/overview.md](docs/design/overview.md), the API contract in
 [docs/specs/api.md](docs/specs/api.md), and the CLI contract in
@@ -22,8 +23,8 @@ Incubating and pre-release. The repository is a frostyard/core
 [Plan 0002](https://github.com/frostyard/core/blob/main/docs/plans/0002-org-portfolio-roadmap.md#incubating-repositories)
 repository: its decision date is 2027-03-31. Phase 1 is built: the API, the
 store, the daemon, the CLI, the stdio MCP server, the Go gate and the docs
-site. The lodge app is phase 2 of the
-[roadmap](docs/plans/0001-roadmap.md); do not build it early.
+site. Phase 2 of the [roadmap](docs/plans/0001-roadmap.md) builds the lodge
+app: `frostmarksd -lodge`, the web UI, the save page and the `.deb`.
 
 ## Map
 
@@ -47,12 +48,27 @@ site. The lodge app is phase 2 of the
 - `marks/authorize.go`: the 4 permission hooks, and the grant filters of the
   list and search calls.
 - `internal/rpc/`: the Connect server on the app's private socket, and the
-  client that `marksctl` uses ([ADR-0004](docs/adr/0004-serve-the-api-over-connect-on-a-private-socket.md)).
+  client that `marksctl` uses ([ADR-0004](docs/adr/0004-serve-the-api-over-connect-on-a-private-socket.md));
+  the handler of lodge's app socket, and the socket that systemd passes
+  ([ADR-0007](docs/adr/0007-run-on-lodge-from-a-hand-installed-deb.md)).
+- `internal/eventbus/`: the transport to lodge's broker, which dials on the
+  first event.
+- `internal/catalog/`: the tool catalog `tools.json` that lodge reads, from the
+  generated tools.
+- `internal/cmd/stage` and `internal/cmd/debcheck`: the install tree under
+  `/usr`, and the check of the built `.deb`
+  ([docs/specs/lodge-app.md](docs/specs/lodge-app.md)).
+- `packaging/`: `app.json`, the systemd units, the `sysusers.d` entry and the
+  nFPM config of `frostyard-frostmarks`.
+- `web/`: the web UI on lodge: React with `@frostyard/lodge-ui` and
+  `@frostyard/lodge-client`, and the Connect client that `protoc-gen-es` writes
+  into `web/src/gen/` ([ADR-0008](docs/adr/0008-build-the-web-ui-with-react-and-lodge-ui.md)).
 - `internal/paths/`: the state directory and the socket path.
 - `internal/e2e/`: the tests of the whole app, over a real socket in a
   temporary directory.
-- `cmd/frostmarksd` and `cmd/marksctl`: the daemon, and the CLI with its `mcp`
-  command.
+- `cmd/frostmarksd` and `cmd/marksctl`: the daemon (with `-lodge`, also lodge's
+  app socket and broker, in `cmd/frostmarksd/lodge.go`), and the CLI with its
+  `mcp` command.
 - `internal/workflowcheck` and `internal/repocheck`: the repository's own rules
   as Go tests: the workflows, the risk-path list, the corrections inbox, the
   Dependabot entries, the buf workspace, the permission hooks, the docs links
@@ -67,8 +83,15 @@ site. The lodge app is phase 2 of the
 ## Gates
 
 - **`make ci` is the command to run before a push** (frostyard/core ADR-0083):
-  `verify gen-check race cross corrections-base manifest-check`. `make check`
-  formats first, then verifies. `mise install` provisions golangci-lint, buf,
+  `verify gen-check race cross corrections-base manifest-check web-check`.
+  `web-check` runs in the nsl machine `lodge` (`NSL_MACHINE`), and CI runs it
+  with `IN_NSL='sh -c'`.
+- **Node, pnpm, Biome, TypeScript, Vitest and Vite run only in the nsl
+  machine**, never on the host: `make web-check`, `make web-build`,
+  `make web-generate`, `make web-fmt`. A change of the proto runs both
+  `make generate` (host) and `make web-generate` (nsl), and commits `gen/` and
+  `web/src/gen/`.
+- `make check` formats first, then verifies. `mise install` provisions golangci-lint, buf,
   protoc-gen-go and svu; Go comes from `go.mod`.
 - `make verify` runs `go mod tidy -diff`, `go vet ./...`, a gofmt check, the
   pinned golangci-lint, `buf lint`, `buf format --diff --exit-code` and
@@ -130,10 +153,13 @@ site. The lodge app is phase 2 of the
   tree is clean and equal to `origin/main`, runs `make check`, takes the version
   from `svu next`, and pushes an annotated tag. svu reads only `vX.Y.Z` tags
   (`.svu.yml`), so the first release is `v0.1.0`.
-- The series is `vX.Y.Z`, from semver on the changes since the last tag. There
-  is no release yet, so the install in `README.md` uses `@latest`. A release
-  workflow, a `.goreleaser.yaml` and `packaging/` join the tree in the pull
-  request that adds the first release, with the risk paths they need.
+- The series is `vX.Y.Z`, from semver on the changes since the last tag.
+- A `vX.Y.Z` tag runs `.github/workflows/release.yml`: `make web-build`, then
+  `make deb`, which stages the tree (`internal/cmd/stage`), builds
+  `frostyard-frostmarks_<version>_amd64.deb` with the nFPM that `mise.toml`
+  pins, and checks it (`internal/cmd/debcheck`); the release job attests the
+  package and attaches it to the GitHub release. Until the first tag, the
+  install in `README.md` uses `@latest`.
 - The tags are the record of each release, so this file names no latest
   version. The newest 1 is the first line of
   `git ls-remote --tags --refs --sort=-v:refname origin 'refs/tags/v[0-9]*'`,
@@ -163,7 +189,8 @@ The repository follows core's baseline (frostyard/core ADR-0071, its spec
   the trust boundary of the socket. A glob that matches no file yet is allowed,
   because a later task adds those paths. A release workflow, install script,
   unit or credential store joins the list in the pull request that adds it.
-- `.github/dependabot.yml` (B13): 1 entry for each manifest (`go.mod`), each
+- `.github/dependabot.yml` (B13): 1 entry for each manifest (the workflows,
+  `go.mod` and `web/package.json`), each
   with exactly 1 `patterns: ["*"]` group.
 - Every `uses:` is a 40-character commit SHA with a version comment, every
   workflow has `permissions: {}` at the top, and every checkout sets

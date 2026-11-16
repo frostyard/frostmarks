@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "web/src",
+  "correction": "Each load of the list view (the folders, and the bookmarks of a folder or a search) carries a generation, and a load that a newer 1 superseded writes neither its rows nor its error, so a slow answer for 1 folder never replaces the rows of the folder that the route names.",
+  "evidence": "frostyard/frostmarks#5, cross-review (openai/gpt-6.1-sol) of head 40f7914, finding 1",
+  "promoted_to": "App.test.tsx: keeps the newer folder's rows when an old load answers late"
+}

@@ -129,6 +129,53 @@ url = "https://github.com/golangci/golangci-lint/releases/download/v2.15.0/golan
 url_api = "https://api.github.com/repos/golangci/golangci-lint/releases/assets/647132900"
 provenance = "github-attestations"
 
+[[tools.nfpm]]
+version = "2.48.0"
+backend = "aqua:goreleaser/nfpm"
+specifiers = ["2.48.0"]
+
+[tools.nfpm."platforms.linux-arm64"]
+checksum = "sha256:a9a75213763783b7669719e505474c748c5ad7dc66591a195619deb50f85c2f4"
+url = "https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/goreleaser/nfpm/releases/assets/634629836"
+provenance = "cosign"
+
+[tools.nfpm."platforms.linux-arm64-musl"]
+checksum = "sha256:a9a75213763783b7669719e505474c748c5ad7dc66591a195619deb50f85c2f4"
+url = "https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/goreleaser/nfpm/releases/assets/634629836"
+provenance = "cosign"
+
+[tools.nfpm."platforms.linux-x64"]
+checksum = "sha256:6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750"
+url = "https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Linux_x86_64.tar.gz"
+url_api = "https://api.github.com/repos/goreleaser/nfpm/releases/assets/634629876"
+provenance = "cosign"
+
+[tools.nfpm."platforms.linux-x64-musl"]
+checksum = "sha256:6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750"
+url = "https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Linux_x86_64.tar.gz"
+url_api = "https://api.github.com/repos/goreleaser/nfpm/releases/assets/634629876"
+provenance = "cosign"
+
+[tools.nfpm."platforms.macos-arm64"]
+checksum = "sha256:ae23377895437b18d4727b362e7ec4c2d38295eb9adf96008e0cbc813038df81"
+url = "https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Darwin_arm64.tar.gz"
+url_api = "https://api.github.com/repos/goreleaser/nfpm/releases/assets/634629842"
+provenance = "cosign"
+
+[tools.nfpm."platforms.macos-x64"]
+checksum = "sha256:be3bdff94bae08638da0f7a3cc4b4ea3f381fa3f10560fcf81ec2e8fea625b49"
+url = "https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Darwin_x86_64.tar.gz"
+url_api = "https://api.github.com/repos/goreleaser/nfpm/releases/assets/634629841"
+provenance = "cosign"
+
+[tools.nfpm."platforms.windows-x64"]
+checksum = "sha256:8ce12620212f5db557e370e35e2279ac7b106ea51e6a546a2be37a1a5d5bd8de"
+url = "https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Windows_x86_64.zip"
+url_api = "https://api.github.com/repos/goreleaser/nfpm/releases/assets/634629837"
+provenance = "cosign"
+
 [[tools.protoc-gen-go]]
 version = "1.36.12"
 backend = "aqua:protocolbuffers/protobuf-go/protoc-gen-go"

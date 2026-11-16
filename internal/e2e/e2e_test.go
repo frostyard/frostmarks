@@ -319,15 +319,41 @@ type daemon struct {
 	// exit carries the result of the 1 Wait, and the channel is buffered, so
 	// that the waiter never blocks.
 	exit chan error
+	// lines are the lines of the daemon's standard error.
+	lines <-chan string
 	// waited is set when the test read the exit's result.
 	waited bool
 }
 
-// startDaemon starts the daemon, and it waits for the line that the daemon writes
-// when its socket accepts.
+// startOptions configure 1 daemon of a test.
+type startOptions struct {
+	// binary is the daemon's path.
+	binary string
+	// args are the daemon's arguments.
+	args []string
+	// env is the daemon's environment, beside the test's own.
+	env []string
+	// ready is the line of standard error that says the daemon serves.
+	ready string
+}
+
+// startDaemon starts the daemon on its private socket, and it waits for the line
+// that the daemon writes when its socket accepts.
 func startDaemon(t *testing.T, binary, stateDir, socket string) *daemon {
 	t.Helper()
-	cmd := exec.Command(binary, "-state-dir", stateDir, "-socket", socket)
+	return startDaemonWith(t, startOptions{
+		binary: binary,
+		args:   []string{"-state-dir", stateDir, "-socket", socket},
+		ready:  "frostmarksd: serving on " + socket,
+	})
+}
+
+// startDaemonWith starts the daemon of 1 test, and it waits for the line that the
+// daemon writes when it serves.
+func startDaemonWith(t *testing.T, options startOptions) *daemon {
+	t.Helper()
+	cmd := exec.Command(options.binary, options.args...)
+	cmd.Env = append(os.Environ(), options.env...)
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		t.Fatalf("the daemon's stderr: %v", err)
@@ -335,7 +361,8 @@ func startDaemon(t *testing.T, binary, stateDir, socket string) *daemon {
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start the daemon: %v", err)
 	}
-	daemon := &daemon{cmd: cmd, exit: make(chan error, 1)}
+	lines := readLines(stderr)
+	daemon := &daemon{cmd: cmd, exit: make(chan error, 1), lines: lines}
 	go func() {
 		daemon.exit <- cmd.Wait()
 	}()
@@ -350,7 +377,7 @@ func startDaemon(t *testing.T, binary, stateDir, socket string) *daemon {
 		}
 		daemon.wait(t)
 	})
-	waitLine(t, readLines(stderr), "frostmarksd: serving on "+socket)
+	waitLine(t, lines, options.ready)
 	return daemon
 }
 

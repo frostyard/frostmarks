@@ -31,6 +31,8 @@ nav:
       - Use marksctl: guides/marksctl.md
       - Connect an MCP client: guides/mcp-client.md
       - Folders and permissions: guides/folders-and-permissions.md
+      - Run on lodge: guides/lodge.md
+      - Save from your browser: guides/save-from-browser.md
   - Reference:
       - Commands: reference/commands.md
   - Contributing:

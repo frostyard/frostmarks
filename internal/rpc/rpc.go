@@ -96,10 +96,16 @@ func listen(path string, uid int) (net.Listener, error) {
 // A call in flight has shutdownTimeout to finish. A server that fails before
 // then returns its error.
 func Serve(ctx context.Context, listener net.Listener, h http.Handler) error {
-	server := &http.Server{
+	return serveServer(ctx, &http.Server{
 		Handler:           h,
 		ReadHeaderTimeout: readHeaderTimeout,
-	}
+	}, listener)
+}
+
+// serveServer serves the server on the listener until ctx ends, and it returns
+// nil then. A call in flight has shutdownTimeout to finish, and a server that
+// fails before then returns its error.
+func serveServer(ctx context.Context, server *http.Server, listener net.Listener) error {
 	failed := make(chan error, 1)
 	go func() {
 		failed <- server.Serve(listener)

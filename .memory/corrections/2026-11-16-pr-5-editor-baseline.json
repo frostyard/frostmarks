@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "web/src",
+  "correction": "The bookmark editor computes the tag changes of a save from the last stored bookmark that a call returned, not from the bookmark that opened the sheet, so a retry after an update that succeeded and a move that failed removes the tags that the form removed.",
+  "evidence": "frostyard/frostmarks#5, cross-review (openai/gpt-6.1-sol) of head 40f7914, finding 2",
+  "promoted_to": "App.test.tsx: keeps a saved change as the baseline when the move fails"
+}

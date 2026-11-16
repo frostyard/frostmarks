@@ -1,0 +1,18 @@
+# frostmarks' lodge socket unit (docs/specs/lodge-app.md, and lodge's
+# docs/specs/app-contract.md, Install layout). systemd creates the socket,
+# owned by the app's user and group lodge, 0660, and passes it to the daemon,
+# which serves it when frostmarksd starts with -lodge. FileDescriptorName is
+# the name that the daemon asks for.
+[Unit]
+Description=frostmarks' lodge socket
+
+[Socket]
+ListenStream=/run/lodge/apps/marks.sock
+FileDescriptorName=marks
+SocketUser=frostmarks
+SocketGroup=lodge
+SocketMode=0660
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target
