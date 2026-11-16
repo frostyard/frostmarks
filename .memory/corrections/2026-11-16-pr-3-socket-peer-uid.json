@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "internal/rpc",
+  "correction": "The private socket serves only the daemon's own user: the listener is hearth's lodge.Listener, which closes a peer of another user before the server reads a byte, so the moment between the socket file's creation and its chmod 0600 cannot serve another user.",
+  "evidence": "frostyard/frostmarks#3, cross-review (openai/gpt-6.1-sol) of head a291305, finding F1",
+  "promoted_to": "TestListenPeerUID (internal/rpc)"
+}

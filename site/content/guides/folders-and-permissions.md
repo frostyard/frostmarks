@@ -5,63 +5,61 @@ change it. This page explains the folder path, and what a grant covers.
 
 ## The folder path
 
-A folder path starts with `/`, and each segment after it is 1 folder:
+A folder path starts with `/` and is a slash-separated name:
 
 | Path | Meaning |
 | --- | --- |
 | `/` | the root folder, which always exists |
-| `/reading` | a folder `reading` at the root |
-| `/reading/2026` | a folder `2026` inside `/reading` |
+| `/reading` | a folder at the root, named `reading` |
+| `/reading/2026` | a folder `2026` inside `reading` |
 
-A path has no trailing slash, no empty segment and no `.` or `..` segment.
-frostmarks compares paths in their Unicode NFC form. A folder is created only
-when its parent exists, and a folder that holds bookmarks or other folders is
-not deleted until it is empty.
+A path has no trailing `/`, no empty segment, and no `.` or `..` segment, and it
+is kept in Unicode NFC. A folder is created only when its parent exists, and a
+folder that holds bookmarks or other folders is not deleted until it is empty.
+The root folder is neither created nor deleted.
 
 ## What the store holds
 
 Each bookmark holds a URL, a title, the notes, a list of tags and its folder
-path. A search reads the title, the URL, the notes and the tags, in 1 folder
-and every folder below it. A list call reads 1 folder, with or without the
-folders below it.
+path. A search reads the title, the URL, the notes and the tags, in 1 folder and
+every folder below it, and it finds the bookmarks that hold every word of the
+query, best match first. A list call reads 1 folder, with or without the folders
+below it.
 
 ## What a grant covers
 
 A caller reaches the store with a grant. A grant is a list of items, and each
-item is a capability on a folder path:
+item is a capability on a path:
 
 | Part | Example | Meaning |
 | --- | --- | --- |
 | capability | `marks:read`, `marks:write` | what the caller may do |
-| folder | `/reading` | the folder and every folder below it |
-
-An item on `/reading` covers `/reading` and `/reading/2026`, and never
-`/readings`. An item on `/` covers every folder.
+| path | `/reading/**` | which folders the capability covers |
 
 The local user's grant covers every folder with every capability, so
 `marksctl` and `marksctl mcp` reach the whole store.
 
-A call on 1 stored bookmark (`get`, `update`, `move`, `delete`) is checked
-against the bookmark's **stored** folder, read inside the call's transaction:
-no request field decides the check. A move needs `marks:write` on the folder
-the bookmark leaves and on the folder it moves to, and a folder rename on the
-old path and on the new path. A list or a search names a folder that the grant
-covers (an absent folder is the root `/`), and it also filters each row by the
-grant.
+A call that changes a bookmark is checked against the bookmark's **stored**
+folder, read inside the transaction: a caller cannot move a bookmark past a
+folder it may not write, and no request field decides the check. A list or a
+search call also filters each row by the grant, so a folder outside the grant
+contributes no row.
 
 ## What the daemon answers
 
 A call outside the grant fails with `permission_denied`, and the message names
-the capability and the folder that the grant does not cover, for example
-`permission denied: needs marks:write on folder=/home`. Nothing is written.
+the capability and the selector that the grant does not cover. Nothing is
+written.
 
 ## Where a grant comes from
 
-- The private socket: the local user, who holds every capability. Only your
-  user reaches it.
+- The private socket: the local user, who holds every capability. The daemon
+  closes every connection whose peer is another user before it reads a byte,
+  and the socket has mode `0600`.
 - lodge, in a later phase: lodge authenticates the caller and passes the
   caller's grant on the app's lodge socket, where the app trusts it only after
-  the peer check. The app imports no lodge code.
+  the peer check. The app's own code reads no header, and it imports no lodge
+  code.
 
 ## Next
 

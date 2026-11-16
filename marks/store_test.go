@@ -1,6 +1,7 @@
 package marks
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -46,5 +47,38 @@ func TestOpenTwice(t *testing.T) {
 	}
 	if fileFormat != "wal" {
 		t.Errorf("the journal mode = %q, want wal", fileFormat)
+	}
+}
+
+// TestOpenEscapedPath checks the database's URI: a directory whose name holds the
+// characters of a URI's own syntax opens, and the database file is at that exact
+// path.
+func TestOpenEscapedPath(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "a?b#c%41 d")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("make the directory: %v", err)
+	}
+	path := filepath.Join(dir, "frostmarks.db")
+	db, err := Open(t.Context(), path)
+	if err != nil {
+		t.Fatalf("Open(%q): %v", path, err)
+	}
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("close the database: %v", err)
+		}
+	})
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("the database file at %q: %v", path, err)
+	}
+	var version int
+	if err := db.QueryRowContext(t.Context(), `PRAGMA user_version`).Scan(&version); err != nil {
+		t.Fatalf("read the schema version: %v", err)
+	}
+	if version != schemaVersion {
+		t.Errorf("the schema version = %d, want %d", version, schemaVersion)
+	}
+	if _, err := os.Stat(path + "-wal"); err != nil {
+		t.Errorf("the write-ahead log of the database at %q: %v", path, err)
 	}
 }

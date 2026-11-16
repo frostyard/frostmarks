@@ -41,8 +41,10 @@ The private socket acts as the local user. The handler is hearth's
 `lodge.PrivateHandler`: it deletes every `Lodge-*` header of the request and puts
 the local user's caller in the context, so a forged `Lodge-Principal` or
 `Lodge-Grant` header reaches no handler, and every generated permission check
-passes. The socket's directory is 0700 and the socket itself is 0600, so only the
-local user reaches it.
+passes. The socket's directory is 0700 and the socket itself is 0600, and hearth's
+`lodge.Listener` closes a connection of another user before the server reads a
+byte of it: the socket file exists a moment before its permission is set, so the
+peer check, which the kernel makes, is what keeps another user out.
 
 1 interceptor maps the errors of the app and of hearth to Connect codes:
 
@@ -91,6 +93,9 @@ the 2 headers only there, and only after it has checked the peer's user id.
   checks for it.
 - **A TCP port with a token:** rejected because a private socket needs no port,
   no token and no firewall rule, and its permission is the file system's.
+- **The socket's permission alone:** rejected because the file is created before
+  `chmod` sets its permission, and every connection in that moment would act as
+  the local user. The peer's user id is checked before a byte is read.
 
 ## References
 

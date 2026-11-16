@@ -32,7 +32,7 @@ func TestBinaries(t *testing.T) {
 	build(t, root, binDir)
 	ctlPath := filepath.Join(binDir, "marksctl")
 	socket := filepath.Join(shortDir(t), "s.sock")
-	daemon, stopped := startDaemon(t, filepath.Join(binDir, "frostmarksd"), filepath.Join(t.TempDir(), "state"), socket)
+	daemon := startDaemon(t, filepath.Join(binDir, "frostmarksd"), filepath.Join(t.TempDir(), "state"), socket)
 
 	t.Run("the commands", func(t *testing.T) {
 		created := createFolder(t, ctlPath, socket, "/work")
@@ -144,11 +144,8 @@ func TestBinaries(t *testing.T) {
 	})
 
 	// The daemon stops on SIGTERM, with exit code 0, and it removes its socket.
-	if err := daemon.Process.Signal(syscall.SIGTERM); err != nil {
-		t.Fatalf("signal the daemon: %v", err)
-	}
-	code := waitDaemon(t, daemon)
-	stopped()
+	daemon.signal(t, syscall.SIGTERM)
+	code := daemon.wait(t)
 	if code != 0 {
 		t.Errorf("the daemon exited with %d, want 0", code)
 	}
@@ -314,10 +311,21 @@ func shortDir(t *testing.T) string {
 	return dir
 }
 
-// startDaemon starts the daemon, and it returns the process and the function
-// that marks the stop as done. It waits for the line that the daemon writes when
-// its socket accepts.
-func startDaemon(t *testing.T, binary, stateDir, socket string) (*exec.Cmd, func()) {
+// daemon is the daemon process of 1 test, and its 1 owner: it starts 1 waiter, it
+// signals the process, and it waits 1 time.
+type daemon struct {
+	// cmd is the process.
+	cmd *exec.Cmd
+	// exit carries the result of the 1 Wait, and the channel is buffered, so
+	// that the waiter never blocks.
+	exit chan error
+	// waited is set when the test read the exit's result.
+	waited bool
+}
+
+// startDaemon starts the daemon, and it waits for the line that the daemon writes
+// when its socket accepts.
+func startDaemon(t *testing.T, binary, stateDir, socket string) *daemon {
 	t.Helper()
 	cmd := exec.Command(binary, "-state-dir", stateDir, "-socket", socket)
 	stderr, err := cmd.StderrPipe()
@@ -327,24 +335,33 @@ func startDaemon(t *testing.T, binary, stateDir, socket string) (*exec.Cmd, func
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start the daemon: %v", err)
 	}
-	stopped := false
+	daemon := &daemon{cmd: cmd, exit: make(chan error, 1)}
+	go func() {
+		daemon.exit <- cmd.Wait()
+	}()
 	t.Cleanup(func() {
-		if stopped {
+		if daemon.waited {
 			return
 		}
-		if err := cmd.Process.Kill(); err != nil {
+		// A failure before the stop leaves the daemon running: it is ended, and
+		// the 1 waiter collects it, so that nothing is left behind.
+		if err := cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
 			t.Errorf("kill the daemon: %v", err)
 		}
+		daemon.wait(t)
 	})
-	lines := readLines(stderr)
-	waitLine(t, lines, "frostmarksd: serving on "+socket)
-	return cmd, func() { stopped = true }
+	waitLine(t, readLines(stderr), "frostmarksd: serving on "+socket)
+	return daemon
 }
 
-// waitDaemon waits for the daemon to exit, and it returns its exit code.
-func waitDaemon(t *testing.T, cmd *exec.Cmd) int {
+// wait waits for the daemon to exit, 1 time, and it returns its exit code.
+func (d *daemon) wait(t *testing.T) int {
 	t.Helper()
-	err := cmd.Wait()
+	if d.waited {
+		t.Fatalf("the daemon was waited for twice")
+	}
+	d.waited = true
+	err := <-d.exit
 	if err == nil {
 		return 0
 	}
@@ -353,6 +370,14 @@ func waitDaemon(t *testing.T, cmd *exec.Cmd) int {
 		t.Fatalf("wait for the daemon: %v", err)
 	}
 	return exitErr.ExitCode()
+}
+
+// signal sends 1 signal to the daemon.
+func (d *daemon) signal(t *testing.T, sig os.Signal) {
+	t.Helper()
+	if err := d.cmd.Process.Signal(sig); err != nil {
+		t.Fatalf("signal the daemon: %v", err)
+	}
 }
 
 // readLines reads the lines of a stream, in a goroutine.

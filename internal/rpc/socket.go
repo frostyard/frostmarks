@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"syscall"
 )
 
 // parentDir returns the directory of 1 socket path, or "" when the path carries
@@ -28,10 +29,24 @@ func makeDir(dir string) error {
 	return nil
 }
 
+// dialSocket dials 1 socket path, and it is the seam of the tests.
+type dialSocket func(path string) (net.Conn, error)
+
+// dialTimeoutSocket dials 1 socket path, and it waits dialTimeout.
+func dialTimeoutSocket(path string) (net.Conn, error) {
+	return net.DialTimeout("unix", path, dialTimeout)
+}
+
 // clearPath makes 1 socket path free for a new listener: an absent path is free,
-// a path that holds a socket that refuses a connection is stale and is removed,
-// and a live socket or another kind of file is an error.
-func clearPath(path string) error {
+// a path that holds a socket that the kernel refuses is stale and is removed, and
+// a live socket, another kind of file, and a socket that fails for another reason
+// are errors that leave the path as it is.
+//
+// The dial's error decides. Only ECONNREFUSED means that nothing listens at the
+// path: a timeout, a permission error or a full backlog say nothing about what
+// holds it, and a removed socket of a daemon that is merely slow would let a
+// second daemon take its place.
+func clearPath(path string, dial dialSocket) error {
 	info, err := os.Lstat(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -42,15 +57,18 @@ func clearPath(path string) error {
 	if info.Mode()&os.ModeSocket == 0 {
 		return fmt.Errorf("%s exists, and it is no socket", path)
 	}
-	conn, err := net.DialTimeout("unix", path, dialTimeout)
-	if err == nil {
+	conn, err := dial(path)
+	switch {
+	case err == nil:
 		_ = conn.Close()
 		return fmt.Errorf("another frostmarksd serves %s", path)
+	case errors.Is(err, syscall.ECONNREFUSED):
+		if err := os.Remove(path); err != nil {
+			return fmt.Errorf("remove the stale socket %s: %w", path, err)
+		}
+		return nil
 	}
-	if err := os.Remove(path); err != nil {
-		return fmt.Errorf("remove the stale socket %s: %w", path, err)
-	}
-	return nil
+	return fmt.Errorf("dial the socket %s: %w", path, err)
 }
 
 // chmod sets the permission of 1 path.

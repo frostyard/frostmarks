@@ -117,8 +117,9 @@ site. The lodge app is phase 2 of the
 - **No private hosts.** Docs write `example.com`, and never a tailnet, device or
   home-network name or a real address.
 - **The private socket acts as the local user**, who holds every capability.
-  No other peer reaches it, and `internal/rpc/` binds it with the user's own
-  permission bits.
+  `internal/rpc/` closes every connection whose peer uid is not the daemon's
+  own before it reads a byte (hearth's `lodge.Listener`), and it sets the
+  socket's mode to `0600`.
 - The 8 `.memory/corrections/*.json` files of the template are permanent.
 
 ## Releases
@@ -167,9 +168,17 @@ The repository follows core's baseline (frostyard/core ADR-0071, its spec
 - Every `uses:` is a 40-character commit SHA with a version comment, every
   workflow has `permissions: {}` at the top, and every checkout sets
   `persist-credentials: false` (B5).
-- `README.md` follows core's README spec for the kind `tool` (B17), and it links
-  the documentation site (B9).
-- No `CODEOWNERS` file (B15), and no other agent framework's tree (B16).
+- `README.md` (B17, B9): the gate checks the kind marker, the `# frostmarks`
+  title, the `**Status:**` line, a `**Documentation:**` line that links
+  <https://frostyard.github.io/frostmarks/>, the sections (`What it does`,
+  `Install`, `Use`, an optional `How it works`, then `Develop` and
+  `Where to go next`) and the 1000-word limit. The full rules R1 to R12 of
+  core's README spec are core's `check-readme.mjs`, which the weekly sweep runs;
+  no target of this repository runs it.
+- No `CODEOWNERS` file at the root, in `.github/` or in `docs/` (B15), and no
+  other agent framework's tree: no `docs/superpowers/`, `.planning/`,
+  `.cursor/rules/`, `.gaai/`, `yeti/` or `cairn/`, and `.claude/` holds only
+  `settings.json`, `skills` and `session-summary.md` (B16).
 
 ## Documentation rules (enforced)
 

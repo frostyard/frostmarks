@@ -45,6 +45,17 @@ The rules that the storage backs:
   segment and no trailing `/`. The root `/` always exists and is not stored. A
   folder's parent must exist, so the tree has no orphan, and a rename rewrites the
   path and every path below it in 1 transaction.
+- **A folder path holds no control character.** A NUL above all: SQLite's
+  `length` and `substr` stop at a NUL, so a folder below `/a\x00b` would compare
+  its prefix against `/a` and be listed as a child of `/a`, and the store's folder
+  scope would disagree with the permission check.
+- **A folder path gives an event topic within hearth's limit.** The topic of the
+  `moved_out` event, the longest verb, carries 1 segment for each segment of the
+  path, and 3 bytes for each byte that a segment's encoding escapes, so a path of
+  400 bytes of 2-byte characters gives a topic of more than 1024 bytes, and the
+  event could never be published. The path is refused when its folder is made,
+  and a rename checks every path that it makes, so no stored path can give an
+  event that the outbox refuses in the transaction of its change.
 - **A folder is deleted only when it is empty**: a folder that holds a bookmark or
   a folder is `failed_precondition`. A delete that swept its contents away would
   be 1 irreversible call that no user asked for.

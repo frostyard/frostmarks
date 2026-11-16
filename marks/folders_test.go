@@ -2,11 +2,13 @@ package marks
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
 
 	"github.com/frostyard/hearth/authz"
+	"github.com/frostyard/hearth/events"
 
 	marksv1 "github.com/frostyard/frostmarks/gen/go/frostyard/frostmarks/v1"
 )
@@ -165,5 +167,96 @@ func TestDeleteFolderNotEmpty(t *testing.T) {
 	}
 	if got := count(t, app, "folders"); got != 1 {
 		t.Errorf("the folders table holds %d rows, want the 1 of /home", got)
+	}
+}
+
+// TestRenameFolderDescendantLimits checks that a rename refuses a new path that
+// makes a folder below it break a folder rule, even when the new path itself is
+// valid, and that the refusal changes nothing.
+func TestRenameFolderDescendantLimits(t *testing.T) {
+	t.Run("a folder below the new path is too long", func(t *testing.T) {
+		app := app(t)
+		bus := inprocBus(t, app)
+		got := subscribe(t, bus, "marks.>")
+		mustCreateFolder(t, app, "/a")
+		child := strings.Repeat("b", 900)
+		mustCreateFolder(t, app, "/a/"+child)
+		bookmark := mustCreateBookmark(t, app, &marksv1.CreateBookmarkRequest{Url: "https://example.com/a", Folder: "/a/" + child})
+		drain(t, app, bus)
+		collect(t, got)
+
+		newPath := "/" + strings.Repeat("a", 300)
+		if len(newPath)+1+len(child) <= maxFolderLen {
+			t.Fatalf("the test wants a child over the length limit, and %d is within %d", len(newPath)+1+len(child), maxFolderLen)
+		}
+		if err := checkFolderPath(newPath); err != nil {
+			t.Fatalf("the new path itself must pass the folder rules: %v", err)
+		}
+		_, err := app.API().RenameFolder(local(t), &marksv1.RenameFolderRequest{Path: "/a", NewPath: newPath})
+		connectErr := wantCode(t, err, connect.CodeInvalidArgument)
+		if !strings.Contains(connectErr.Message(), "the rename /a to "+newPath) {
+			t.Errorf("the refusal = %q, want the rename's own error", connectErr.Message())
+		}
+		checkRenameLeftRows(t, app, got, "/a", "/a/"+child, bookmark)
+	})
+
+	t.Run("a folder below the new path has too long a topic", func(t *testing.T) {
+		app := app(t)
+		bus := inprocBus(t, app)
+		got := subscribe(t, bus, "marks.>")
+		mustCreateFolder(t, app, "/a")
+		child := strings.Repeat("é", 120)
+		mustCreateFolder(t, app, "/a/"+child)
+		bookmark := mustCreateBookmark(t, app, &marksv1.CreateBookmarkRequest{Url: "https://example.com/a", Folder: "/a/" + child})
+		drain(t, app, bus)
+		collect(t, got)
+
+		newPath := "/" + strings.Repeat("a", 400)
+		if len(newPath)+1+len(child) > maxFolderLen {
+			t.Fatalf("the topic case must stay within the length limit, and %d is over %d", len(newPath)+1+len(child), maxFolderLen)
+		}
+		if err := checkFolderPath(newPath); err != nil {
+			t.Fatalf("the new path itself must pass the folder rules: %v", err)
+		}
+		if err := checkFolderPath("/a/" + child); err != nil {
+			t.Fatalf("the child must pass the folder rules before the rename: %v", err)
+		}
+		_, err := app.API().RenameFolder(local(t), &marksv1.RenameFolderRequest{Path: "/a", NewPath: newPath})
+		connectErr := wantCode(t, err, connect.CodeInvalidArgument)
+		if !strings.Contains(connectErr.Message(), "topic") {
+			t.Errorf("the refusal = %q, want the topic's limit", connectErr.Message())
+		}
+		checkRenameLeftRows(t, app, got, "/a", "/a/"+child, bookmark)
+	})
+}
+
+// checkRenameLeftRows checks that a refused rename left the folders, the
+// bookmark and the outbox as they were.
+func checkRenameLeftRows(t *testing.T, app *Service, got <-chan events.Event, path, child string, bookmark *marksv1.Bookmark) {
+	t.Helper()
+	listed, err := app.API().ListFolders(local(t), &marksv1.ListFoldersRequest{Folder: "/", Recursive: true})
+	if err != nil {
+		t.Fatalf("ListFolders: %v", err)
+	}
+	var paths []string
+	for _, folder := range listed.GetFolders() {
+		paths = append(paths, folder.GetPath())
+	}
+	want := []string{path, child}
+	if len(paths) != len(want) || paths[0] != want[0] || paths[1] != want[1] {
+		t.Errorf("the folders = %v, want %v", paths, want)
+	}
+	kept, err := app.API().GetBookmark(local(t), &marksv1.GetBookmarkRequest{Id: bookmark.GetId()})
+	if err != nil {
+		t.Fatalf("GetBookmark: %v", err)
+	}
+	if got := kept.GetBookmark().GetFolder(); got != child {
+		t.Errorf("the bookmark's folder = %q, want %q", got, child)
+	}
+	if got := count(t, app, "hearth_outbox"); got != 0 {
+		t.Errorf("the outbox holds %d rows after the refusal, want none", got)
+	}
+	if events := collect(t, got); len(events) != 0 {
+		t.Errorf("the refusal published %d events, want none", len(events))
 	}
 }

@@ -49,19 +49,34 @@ func Handler(api marksv1.MarksAPI) http.Handler {
 	return lodge.PrivateHandler(mux)
 }
 
-// Listen listens on the private socket at path.
+// Listen listens on the private socket at path, and it serves only the processes
+// of the local user: another user's connection is closed before the server reads
+// a byte of it.
 //
 // It makes the socket's directory (0700) when it is missing. A path that holds a
 // socket that accepts a connection is another frostmarksd: the call fails. A path
-// that holds a socket that refuses is stale: it is removed. A path that holds
-// something else fails the call. The socket's own permission is 0600.
+// that holds a socket that the kernel refuses is stale: it is removed. A path that
+// holds something else, or a socket that fails for another reason, fails the call
+// and stays. The socket's own permission is 0600.
 func Listen(path string) (net.Listener, error) {
+	return listen(path, os.Getuid())
+}
+
+// listen listens on the private socket at path, and it serves only the processes
+// of uid.
+//
+// The uid is the seam of the tests: the daemon passes its own user's id, so a
+// test can pass another id and prove that such a peer is closed with no response.
+// The socket's permission is the second guard, and the weaker 1: the socket file
+// exists a moment before its permission is set, so the peer check, which the
+// kernel makes before the server reads a byte, is what keeps another user out.
+func listen(path string, uid int) (net.Listener, error) {
 	if dir := parentDir(path); dir != "" {
 		if err := makeDir(dir); err != nil {
 			return nil, err
 		}
 	}
-	if err := clearPath(path); err != nil {
+	if err := clearPath(path, dialTimeoutSocket); err != nil {
 		return nil, err
 	}
 	listener, err := net.Listen("unix", path)
@@ -73,7 +88,7 @@ func Listen(path string) (net.Listener, error) {
 		_ = os.Remove(path)
 		return nil, err
 	}
-	return listener, nil
+	return lodge.Listener(listener, uid), nil
 }
 
 // Serve serves h on the listener until ctx ends, and it returns nil then.

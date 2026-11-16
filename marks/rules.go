@@ -1,6 +1,7 @@
 package marks
 
 import (
+	"fmt"
 	"net/url"
 	"slices"
 	"strconv"
@@ -9,6 +10,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/frostyard/hearth/authz"
+	"github.com/frostyard/hearth/events"
+
+	marksv1 "github.com/frostyard/frostmarks/gen/go/frostyard/frostmarks/v1"
 )
 
 // The app's limits, in bytes unless a rule says runes.
@@ -28,21 +32,72 @@ const (
 )
 
 // folderOf returns the canonical form of 1 request's folder value: the root
-// path for an absent value, and invalid_argument for a value that is no folder
-// path (see authz.CleanPath) or is longer than maxFolderLen.
+// path for an absent value, and invalid_argument for a value that breaks a
+// folder rule (see checkFolderValue and checkFolderTopic) or that is no folder
+// path (see authz.CleanPath).
 func folderOf(value string) (string, error) {
 	path := value
 	if path == "" {
 		path = authz.Root
 	}
-	if len(path) > maxFolderLen {
-		return "", invalidArgument("the folder is %d bytes, and the limit is %d", len(path), maxFolderLen)
+	if err := checkFolderValue(path); err != nil {
+		return "", invalidArgument("%s", err.Error())
 	}
 	cleaned, err := authz.CleanPath(path)
 	if err != nil {
 		return "", invalidArgument("%s", err.Error())
 	}
+	if err := checkFolderTopic(cleaned); err != nil {
+		return "", invalidArgument("%s", err.Error())
+	}
 	return cleaned, nil
+}
+
+// checkFolderValue returns the error of 1 folder value before its canonical
+// form: its length in bytes, and no control character.
+//
+// A NUL is refused with every other control character: SQLite's length and
+// substr stop at a NUL, so a path that holds 1 would break every prefix
+// comparison of the store, and a folder below it would be listed as its own
+// parent.
+func checkFolderValue(value string) error {
+	if len(value) > maxFolderLen {
+		return fmt.Errorf("the folder %q is %d bytes, and the limit is %d", value, len(value), maxFolderLen)
+	}
+	for _, r := range value {
+		if unicode.IsControl(r) {
+			return fmt.Errorf("the folder %q holds the control character %q", value, r)
+		}
+	}
+	return nil
+}
+
+// checkFolderTopic returns the error of 1 canonical folder path whose longest
+// event topic is beyond hearth's limit: the topic of the moved_out event, the
+// longest verb, grows with 1 segment for each segment of the path, and each
+// byte outside [A-Za-z0-9-] of a segment is percent-encoded with 3 bytes, so a
+// short path of other characters can pass the length rule and still give a topic
+// that no event can carry.
+func checkFolderTopic(path string) error {
+	topic, _, err := events.TopicOf(marksv1.EventBookmarkMovedOut, path)
+	if err != nil {
+		return fmt.Errorf("the folder %q: %w", path, err)
+	}
+	// TopicOf refuses a longer topic as well; the app's own limit stays here,
+	// so that the rule does not depend on that detail of hearth.
+	if len(topic) > events.MaxTopicLen {
+		return fmt.Errorf("the folder %q gives the event topic of %d bytes, and the limit is %d", path, len(topic), events.MaxTopicLen)
+	}
+	return nil
+}
+
+// checkFolderPath returns the error of 1 canonical folder path: the rules of a
+// folder value, and an event topic within hearth's limit.
+func checkFolderPath(path string) error {
+	if err := checkFolderValue(path); err != nil {
+		return err
+	}
+	return checkFolderTopic(path)
 }
 
 // parentOf returns the parent of 1 canonical path: the root for a path of 1

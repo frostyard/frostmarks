@@ -56,6 +56,15 @@ A folder is 1 path: `/` is the root, and every other folder is `/` followed by
 trailing `/`, at most 1024 bytes. The root always exists and is never stored. A
 folder's parent must exist.
 
+A folder path holds no control character, and no NUL above all: SQLite's `length`
+and `substr` stop at a NUL, so a path that holds 1 would break every prefix
+comparison of the store. A folder path also gives an event topic within hearth's
+limit of 1024 bytes ([ADR-0006](../adr/0006-store-bookmarks-in-sqlite-with-full-text-search.md)):
+the topic of the `moved_out` event, the longest verb, adds 1 segment for each
+segment of the path, and 3 bytes for each byte of a segment that its encoding
+escapes, so a short path of other characters can pass the length rule and still
+give a topic that no event can carry.
+
 | Field | Type | Constraints |
 | --- | --- | --- |
 | `path` | string | 1 canonical folder path |
@@ -89,7 +98,10 @@ An absent `folder` is the root `/`.
 | `permission_denied` | `permission denied: needs <cap> on folder=<path>` | the caller's grant does not cover the folder |
 | `permission_denied` | `permission denied: no caller` | the context carries no caller |
 | `invalid_argument` | `invalid folder path "<path>": <reason>` | the path is no folder path |
-| `invalid_argument` | `the folder is <n> bytes, and the limit is 1024` | the path is too long |
+| `invalid_argument` | `the folder "<path>" is <n> bytes, and the limit is 1024` | the path is too long |
+| `invalid_argument` | `the folder "<path>" holds the control character <c>` | the path holds a control character |
+| `invalid_argument` | `the folder "<path>": events: <type>: the topic is <n> bytes, and the limit is 1024` | the folder's longest event topic is too long |
+| `invalid_argument` | `the URL "<url>" is no URL: <reason>` | the URL does not parse |
 | `invalid_argument` | `the URL "<url>" must start with http:// or https://` | the scheme is neither http nor https |
 | `invalid_argument` | `the URL "<url>" has no host` | the URL has no host |
 | `invalid_argument` | `the URL is <n> bytes, and the limit is 8192` | the URL is too long |
@@ -99,6 +111,7 @@ An absent `folder` is the root `/`.
 | `invalid_argument` | `invalid tag "<tag>": <reason>` | the tag is empty, too long, or holds white space, a comma or a control character |
 | `invalid_argument` | `the tag "<tag>" is in add_tags and remove_tags` | the same tag is added and removed |
 | `invalid_argument` | `the bookmark would hold <n> tags, and the limit is 64` | the tags exceed the limit |
+| `invalid_argument` | `the call names <n> tags, and the limit is 64` | 1 list of `add_tags` or `remove_tags` is longer than 64 |
 | `invalid_argument` | `the query holds no word` | the query has no word |
 | `invalid_argument` | `the root folder / always exists` | `CreateFolder` names the root |
 | `invalid_argument` | `the root folder / is not renamed` | `RenameFolder` names the root as `path` |
@@ -106,6 +119,8 @@ An absent `folder` is the root `/`.
 | `invalid_argument` | `the new path <path> is the folder's own path` | `RenameFolder` names the same path twice |
 | `invalid_argument` | `the new path <path> is below the folder <path>` | `RenameFolder` moves a folder into itself |
 | `invalid_argument` | `the root folder / is not deleted` | `DeleteFolder` names the root |
+| `invalid_argument` | `the rename <path> to <new_path>: <rule>` | a folder below the new path breaks a folder rule |
+| `invalid_argument` | `the rename <path> to <new_path>, the bookmark <id>: <rule>` | the folder of a bookmark below the new path breaks a folder rule |
 | `not_found` | `no folder <path>` | the folder is not there |
 | `not_found` | `no bookmark <id>` | the bookmark is not there |
 | `already_exists` | `the folder <path> exists` | `CreateFolder` or `RenameFolder` finds the folder |
@@ -171,6 +186,11 @@ needs `marks:read` on its selector
     writes neither the change nor the event.
 14. A missing bookmark is `not_found`, in the hook of an RPC on an id and in the
     RPC itself.
+15. A folder path of a request holds no control character, and its longest event
+    topic is within hearth's limit. The request of every RPC that names a folder
+    follows the rule, and so does `RenameFolder` for each path that it makes: the
+    folder, each folder below it, and the folder of each bookmark below it. A
+    refused rename writes no row and no event.
 
 ## Derived artifacts
 

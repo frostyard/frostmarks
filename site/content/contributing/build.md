@@ -9,7 +9,7 @@ package manager beyond that, and no network access in its tests.
 mise install   # golangci-lint, buf, protoc-gen-go, svu
 make build     # frostmarksd and marksctl into build/
 make check     # format, then verify
-make ci        # what CI runs: verify, the generated code, race, cross-builds, the docs
+make ci        # what CI runs: verify, the generated code, race, cross-builds, the corrections check and the manifest diff
 ```
 
 | Target | What it runs |
@@ -21,8 +21,11 @@ make ci        # what CI runs: verify, the generated code, race, cross-builds, t
 | `make race` | the tests under the race detector |
 | `make cross` | build every package for linux/amd64 and arm64, and darwin/arm64. No windows build: the daemon serves a Unix socket |
 | `make corrections-base` | compare the corrections inbox with `BASE` |
-| `make manifest-check` | diff `gen/manifest.json` against the default branch, so a breaking change is caught in review |
+| `make manifest-check` | compare `gen/manifest.json` with the 1 at `BASE`, so a breaking change is caught in review; it skips when `BASE` is empty, and CI sets the pull request's base commit |
 | `make site` | build this site into `site/dist`, in strict mode |
+
+`make ci` does not build the site: its 6 prerequisites are `verify`,
+`gen-check`, `race`, `cross`, `corrections-base` and `manifest-check`.
 
 ## The generated code
 
@@ -32,8 +35,9 @@ make ci        # what CI runs: verify, the generated code, race, cross-builds, t
 beside the change. `make gen-check` fails when the 2 drift, so the review sees
 the generated difference.
 
-The plugins run with `go run` of the versions that `go.mod` requires, so
-`go.sum` pins them and no plugin comes from a registry.
+The Connect plugin and hearth's 4 plugins run with `go run` of the versions that
+`go.mod` requires, so `go.sum` pins them, and `protoc-gen-go` is the binary that
+`mise.toml` pins. No plugin comes from a registry.
 
 ## The docs
 
@@ -50,8 +54,8 @@ make site-serve  # preview at http://127.0.0.1:8000/frostmarks/
 ```
 
 The site needs the Python lock in `site/requirements.txt` and writes its
-virtual environment to `build/site-venv`. `make ci` does not build the site, so
-a change that does not touch `site/` needs no Python toolchain.
+virtual environment to `build/site-venv`. No gate builds the site, so a change
+that does not touch `site/` needs no Python toolchain.
 
 ## Write for users
 

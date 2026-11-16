@@ -48,8 +48,9 @@ commands. [Use marksctl](guides/marksctl.md) stores the first bookmark.
 
     ---
 
-    `marksctl` sends each call over the socket. It prints a table, or 1 JSON
-    object with `-json`, so a shell script reads it without a parser.
+    `marksctl` sends each call over the socket. It prints a table, or the
+    response as proto3 JSON with `-json`, so a shell script reads it without a
+    table parser.
 
 -   **MCP tools for agents**
 

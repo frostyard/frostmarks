@@ -2,6 +2,7 @@ package workflowcheck
 
 import (
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -10,8 +11,10 @@ import (
 	"regexp"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"unicode/utf8"
 
 	"go.yaml.in/yaml/v3"
@@ -727,4 +730,350 @@ func TestDependabotCoversManifests(t *testing.T) {
 		t.Fatal("no dependency manifest found")
 	}
 	t.Logf("%d manifests, %d Dependabot entries", manifests, len(cfg.Updates))
+}
+
+// codeownersPaths are the 3 places where a CODEOWNERS file counts (row B15).
+var codeownersPaths = []string{"CODEOWNERS", ".github/CODEOWNERS", "docs/CODEOWNERS"}
+
+// codeownersProblems returns 1 problem for each CODEOWNERS file of the tree
+// fsys: the repository has no code owners, and a review is a pull request's
+// (row B15).
+func codeownersProblems(fsys fs.FS) []string {
+	var problems []string
+	for _, path := range codeownersPaths {
+		if _, err := fs.Stat(fsys, path); err == nil {
+			problems = append(problems, path+" is a CODEOWNERS file, and this repository has no code owners (row B15)")
+		}
+	}
+	return problems
+}
+
+// agentTrees are the trees of other agent frameworks that this repository does
+// not hold (row B16).
+var agentTrees = []string{
+	"docs/superpowers",
+	".planning",
+	".cursor/rules",
+	".gaai",
+	"yeti",
+	"cairn",
+}
+
+// claudeEntries are the only entries that .claude/ may hold: the settings, the
+// skills symlink, and the session summary (row B16).
+var claudeEntries = []string{"settings.json", "skills", "session-summary.md"}
+
+// agentTreeProblems returns 1 problem for each tree of another agent framework
+// that the tree fsys holds, and for each other entry of .claude/ (row B16).
+func agentTreeProblems(fsys fs.FS) []string {
+	var problems []string
+	for _, tree := range agentTrees {
+		if _, err := fs.Stat(fsys, tree); err == nil {
+			problems = append(problems, tree+" is another agent framework's tree, and this repository keeps its own instructions (row B16)")
+		}
+	}
+	entries, err := fs.ReadDir(fsys, ".claude")
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return problems
+		}
+		return append(problems, ".claude: "+err.Error())
+	}
+	for _, entry := range entries {
+		if !slices.Contains(claudeEntries, entry.Name()) {
+			problems = append(problems, ".claude/"+entry.Name()+" is not 1 of "+strings.Join(claudeEntries, ", ")+" (row B16)")
+		}
+	}
+	return problems
+}
+
+// readmeKind is the kind marker that README.md carries: frostmarks ships a
+// command that people install (row B17).
+const readmeKind = "tool"
+
+// readmeSite is the documentation home that README.md links: the site of
+// frostyard/core ADR-0070 (row B9).
+const readmeSite = "https://frostyard.github.io/frostmarks/"
+
+// readmeSections are the level-2 sections of a tool README, in order: the 3
+// required 1s, the 1 optional 1, and the last 2 (row B17).
+var readmeSections = []string{"What it does", "Install", "Use", "How it works", "Develop", "Where to go next"}
+
+// readmeWords is the most words a README may hold (row B17).
+const readmeWords = 1000
+
+// headingSection returns the section that 1 level-2 heading names: the longest
+// section name that the heading starts with, whatever its case, or "" for a
+// heading that names none.
+func headingSection(heading string) string {
+	lower := strings.ToLower(heading)
+	found := ""
+	for _, name := range readmeSections {
+		if strings.HasPrefix(lower, strings.ToLower(name)) && len(name) > len(found) {
+			found = name
+		}
+	}
+	return found
+}
+
+// readmeProblems returns each problem of 1 README's text against the light
+// check of rows B17 and B9: the kind marker, the title, the status line, a
+// documentation line that links the site, the section list, and the word count.
+// The full rules R1 to R12 of frostyard/core docs/specs/readme.md are the
+// checker of core's frostyard-readme skill, which no target of this repository
+// runs.
+func readmeProblems(text string) []string {
+	var (
+		problems []string
+		lines    = strings.Split(text, "\n")
+	)
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "<!-- readme-kind: "+readmeKind+" -->" {
+		problems = append(problems, "the first line is not <!-- readme-kind: "+readmeKind+" --> (row B17)")
+	}
+
+	var (
+		title, status, doc bool
+		sections           []string
+		fence              string
+	)
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if fence != "" {
+			if strings.HasPrefix(trimmed, fence) {
+				fence = ""
+			}
+			continue
+		}
+		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			fence = trimmed[:3]
+			continue
+		}
+		switch {
+		case line == "# frostmarks":
+			title = true
+		case strings.HasPrefix(trimmed, "**Status:**"):
+			status = true
+		case strings.HasPrefix(trimmed, "**Documentation:**"):
+			doc = true
+			if !strings.Contains(trimmed, "]("+readmeSite+")") && !strings.Contains(trimmed, "<"+readmeSite+">") {
+				problems = append(problems, "the documentation line does not link "+readmeSite+" (row B9)")
+			}
+		case strings.HasPrefix(trimmed, "## "):
+			name := headingSection(strings.TrimSpace(trimmed[len("## "):]))
+			if name == "" {
+				problems = append(problems, "the heading "+strconv.Quote(trimmed)+" names no section of a tool README (row B17)")
+				continue
+			}
+			sections = append(sections, name)
+		}
+	}
+	if !title {
+		problems = append(problems, "there is no # frostmarks title (row B17)")
+	}
+	if !status {
+		problems = append(problems, "there is no **Status:** line (row B17)")
+	}
+	if !doc {
+		problems = append(problems, "there is no **Documentation:** line (row B17)")
+	}
+
+	// The required sections come first, in order, and the optional 1 may stand
+	// between them and the last 2.
+	required := []string{"What it does", "Install", "Use"}
+	last := []string{"Develop", "Where to go next"}
+	got := slices.DeleteFunc(slices.Clone(sections), func(name string) bool { return name == "How it works" })
+	want := append(slices.Clone(required), last...)
+	if !slices.Equal(got, want) {
+		problems = append(problems, fmt.Sprintf("the sections are %q, want %q in that order, with an optional %q before %q (row B17)",
+			sections, want, "How it works", "Develop"))
+	}
+	if n := len(strings.Fields(text)); n > readmeWords {
+		problems = append(problems, fmt.Sprintf("the README has %d words, want %d at most (row B17)", n, readmeWords))
+	}
+	return problems
+}
+
+// TestNoCodeowners guards row B15 of frostyard/core
+// docs/specs/repository-baseline.md: the repository has no CODEOWNERS file.
+func TestNoCodeowners(t *testing.T) {
+	problems := codeownersProblems(os.DirFS(filepath.Join("..", "..")))
+	for _, problem := range problems {
+		t.Error(problem)
+	}
+}
+
+// TestNoAgentFrameworkTrees guards row B16 of frostyard/core
+// docs/specs/repository-baseline.md: the repository holds no other agent
+// framework's tree, and .claude/ holds only its 3 entries.
+func TestNoAgentFrameworkTrees(t *testing.T) {
+	problems := agentTreeProblems(os.DirFS(filepath.Join("..", "..")))
+	for _, problem := range problems {
+		t.Error(problem)
+	}
+}
+
+// TestReadmeSurfaces guards rows B17 and B9 of frostyard/core
+// docs/specs/repository-baseline.md: README.md is a tool README with a status
+// line and a documentation line that links the site, and it holds at most 1000
+// words.
+func TestReadmeSurfaces(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
+	if err != nil {
+		t.Fatalf("README.md: %v", err)
+	}
+	for _, problem := range readmeProblems(string(data)) {
+		t.Error(problem)
+	}
+	t.Logf("%d words", len(strings.Fields(string(data))))
+}
+
+// TestCodeownersProblems checks the CODEOWNERS rule on small trees (row B15).
+func TestCodeownersProblems(t *testing.T) {
+	file := func() *fstest.MapFile { return &fstest.MapFile{Data: []byte("* @example\n")} }
+	for _, tc := range []struct {
+		name string
+		fsys fstest.MapFS
+		want string // a part of the 1 problem; empty for no problem
+	}{
+		{"no CODEOWNERS", fstest.MapFS{"README.md": file()}, ""},
+		{"a CODEOWNERS at the root", fstest.MapFS{"CODEOWNERS": file()}, "CODEOWNERS is a CODEOWNERS file"},
+		{"a CODEOWNERS in .github", fstest.MapFS{".github/CODEOWNERS": file()}, ".github/CODEOWNERS is a CODEOWNERS file"},
+		{"a CODEOWNERS in docs", fstest.MapFS{"docs/CODEOWNERS": file()}, "docs/CODEOWNERS is a CODEOWNERS file"},
+		{"a template of another name", fstest.MapFS{"docs/codeowners.md": file()}, ""},
+	} {
+		problems := codeownersProblems(tc.fsys)
+		switch {
+		case tc.want == "" && len(problems) > 0:
+			t.Errorf("%s: codeownersProblems = %v, want none", tc.name, problems)
+		case tc.want != "" && !slices.ContainsFunc(problems, func(p string) bool { return strings.Contains(p, tc.want) }):
+			t.Errorf("%s: codeownersProblems = %v, want a problem with %q", tc.name, problems, tc.want)
+		}
+	}
+}
+
+// TestAgentTreeProblems checks the agent-tree rule on small trees (row B16).
+func TestAgentTreeProblems(t *testing.T) {
+	dir := func() *fstest.MapFile { return &fstest.MapFile{Mode: fs.ModeDir} }
+	file := func() *fstest.MapFile { return &fstest.MapFile{Data: []byte("{}\n")} }
+	for _, tc := range []struct {
+		name string
+		fsys fstest.MapFS
+		want string // a part of the 1 problem; empty for no problem
+	}{
+		{"a tree of its own", fstest.MapFS{
+			".claude/settings.json":            file(),
+			".claude/session-summary.md":       file(),
+			".agents/skills/TEMPLATE/SKILL.md": file(),
+		}, ""},
+		{"no .claude at all", fstest.MapFS{"README.md": file()}, ""},
+		{"docs/superpowers", fstest.MapFS{"docs/superpowers/plans/x.md": file()}, "docs/superpowers is another agent framework's tree"},
+		{".planning", fstest.MapFS{".planning/x.md": file()}, ".planning is another agent framework's tree"},
+		{".cursor/rules", fstest.MapFS{".cursor/rules/x.mdc": file()}, ".cursor/rules is another agent framework's tree"},
+		{".gaai", fstest.MapFS{".gaai/x.json": file()}, ".gaai is another agent framework's tree"},
+		{"yeti", fstest.MapFS{"yeti/x.md": file()}, "yeti is another agent framework's tree"},
+		{"cairn", fstest.MapFS{"cairn/x.md": file()}, "cairn is another agent framework's tree"},
+		{"a second .claude tree", fstest.MapFS{".claude/skills": dir(), ".claude/plugins/x.json": file()}, ".claude/plugins is not 1 of"},
+	} {
+		problems := agentTreeProblems(tc.fsys)
+		switch {
+		case tc.want == "" && len(problems) > 0:
+			t.Errorf("%s: agentTreeProblems = %v, want none", tc.name, problems)
+		case tc.want != "" && !slices.ContainsFunc(problems, func(p string) bool { return strings.Contains(p, tc.want) }):
+			t.Errorf("%s: agentTreeProblems = %v, want a problem with %q", tc.name, problems, tc.want)
+		}
+	}
+}
+
+// TestReadmeProblems checks the README rule on 1 valid README and on 1 fixture
+// for each rule (rows B17 and B9).
+func TestReadmeProblems(t *testing.T) {
+	const valid = `<!-- readme-kind: tool -->
+# frostmarks
+
+frostmarks stores bookmarks.
+
+**Status:** pre-release.
+
+**Documentation:** [frostyard.github.io/frostmarks](https://frostyard.github.io/frostmarks/)
+
+## What it does
+
+It stores bookmarks.
+
+## Install
+
+` + "```sh" + `
+go install example.com/marks
+` + "```" + `
+
+## Use
+
+Run it.
+
+## Develop
+
+` + "```sh" + `
+make ci
+` + "```" + `
+
+## Where to go next
+
+- [AGENTS.md](AGENTS.md)
+`
+	// withSection returns the valid README with 1 heading put before Develop.
+	withSection := func(heading string) string {
+		return strings.Replace(valid, "## Develop", "## "+heading+"\n\ntext\n\n## Develop", 1)
+	}
+	for _, tc := range []struct {
+		name string
+		text string
+		want string // a part of the 1 problem; empty for no problem
+	}{
+		{"a valid tool README", valid, ""},
+		{"an optional How it works", withSection("How it works"), ""},
+		{"a heading in a code block", strings.Replace(valid, "Run it.", "Run it:\n\n```\n## Not a section\n```", 1), ""},
+		{"the wrong kind", strings.Replace(valid, "readme-kind: tool", "readme-kind: org", 1), "the first line is not"},
+		{"no marker", strings.Replace(valid, "<!-- readme-kind: tool -->\n", "", 1), "the first line is not"},
+		{"no title", strings.Replace(valid, "# frostmarks\n", "", 1), "no # frostmarks title"},
+		{"no status line", strings.Replace(valid, "**Status:** pre-release.", "**Status:** it works.", 1), ""},
+		{"another documentation home", strings.Replace(valid, "https://frostyard.github.io/frostmarks/", "https://example.com/", 1), "does not link https://frostyard.github.io/frostmarks/"},
+		{"no documentation line", strings.Replace(valid, "**Documentation:** [frostyard.github.io/frostmarks](https://frostyard.github.io/frostmarks/)\n", "", 1), "no **Documentation:** line"},
+		{"a section out of order", strings.Replace(valid,
+			"## Install\n\n```sh\ngo install example.com/marks\n```\n\n## Use\n",
+			"## Use\n\n```sh\ngo install example.com/marks\n```\n\n## Install\n", 1), "the sections are"},
+		{"an unknown section", withSection("Limits of the tool"), "names no section"},
+		{"a missing section", strings.Replace(valid, "## Use", "## Usage notes", 1), "names no section"},
+		{"a long README", valid + strings.Repeat("word ", 1000), "words, want 1000 at most"},
+	} {
+		problems := readmeProblems(tc.text)
+		switch {
+		case tc.want == "" && len(problems) > 0:
+			t.Errorf("%s: readmeProblems = %v, want none", tc.name, problems)
+		case tc.want != "" && !slices.ContainsFunc(problems, func(p string) bool { return strings.Contains(p, tc.want) }):
+			t.Errorf("%s: readmeProblems = %v, want a problem with %q", tc.name, problems, tc.want)
+		}
+	}
+}
+
+// TestHeadingSection checks the section matching on the headings this
+// repository's README may carry (row B17).
+func TestHeadingSection(t *testing.T) {
+	for heading, want := range map[string]string{
+		"What it does":           "What it does",
+		"Install":                "Install",
+		"installation":           "Install",
+		"Install the 2 commands": "Install",
+		"Use":                    "Use",
+		"How it works":           "How it works",
+		"Develop":                "Develop",
+		"Where to go next":       "Where to go next",
+		"Limits":                 "",
+		"Usage":                  "",
+		"":                       "",
+		"Installing":             "Install",
+	} {
+		if got := headingSection(heading); got != want {
+			t.Errorf("headingSection(%q) = %q, want %q", heading, got, want)
+		}
+	}
 }

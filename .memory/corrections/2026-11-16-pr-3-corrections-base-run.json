@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "internal/cmd/corrections-base",
+  "correction": "The tests of corrections-base run the real run in a temporary git repository, so a run that reports success on a deleted, a renamed or a changed record fails them.",
+  "evidence": "frostyard/frostmarks#3, cross-review (openai/gpt-6.1-sol) of head a291305, finding F10",
+  "promoted_to": "TestRun (internal/cmd/corrections-base)"
+}

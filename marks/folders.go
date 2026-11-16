@@ -127,6 +127,12 @@ func (s *Service) RenameFolder(ctx context.Context, req *marksv1.RenameFolderReq
 		if taken != "" {
 			return alreadyExists("the folder %s exists", taken)
 		}
+		// Every path that the rename makes must obey the same rules as a
+		// request path, before either update writes a row: a longer new path
+		// would push a folder below it past the length or the topic limit.
+		if err := checkRenamedPaths(ctx, tx, path, newPath); err != nil {
+			return err
+		}
 		moved, err := movedBookmarks(ctx, tx, path)
 		if err != nil {
 			return err
@@ -275,6 +281,55 @@ func folderInSubtree(ctx context.Context, q querier, path string) (string, error
 		return "", fmt.Errorf("read the folders below %s: %w", path, err)
 	}
 	return found, nil
+}
+
+// checkRenamedPaths returns the error of 1 rename whose resulting paths break a
+// folder rule: the folder, each folder below it, and the folder of each bookmark
+// below it must pass checkFolderPath.
+func checkRenamedPaths(ctx context.Context, tx *sql.Tx, path, newPath string) error {
+	folders, err := foldersInSubtree(ctx, tx, path)
+	if err != nil {
+		return err
+	}
+	moved, err := movedBookmarks(ctx, tx, path)
+	if err != nil {
+		return err
+	}
+	for _, from := range folders {
+		if err := checkFolderPath(newPath + from[len(path):]); err != nil {
+			return invalidArgument("the rename %s to %s: %s", path, newPath, err.Error())
+		}
+	}
+	for _, bookmark := range moved {
+		if err := checkFolderPath(newPath + bookmark.folder[len(path):]); err != nil {
+			return invalidArgument("the rename %s to %s, the bookmark %s: %s", path, newPath, bookmark.id, err.Error())
+		}
+	}
+	return nil
+}
+
+// foldersInSubtree returns the paths of 1 folder and of every folder below it, in
+// path order.
+func foldersInSubtree(ctx context.Context, q querier, path string) ([]string, error) {
+	rows, err := q.QueryContext(ctx, `SELECT path FROM folders WHERE path = ? OR `+belowSQL+` ORDER BY path`, path, path, path)
+	if err != nil {
+		return nil, fmt.Errorf("read the folders below %s: %w", path, err)
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+	var out []string
+	for rows.Next() {
+		var folder string
+		if err := rows.Scan(&folder); err != nil {
+			return nil, fmt.Errorf("read a folder below %s: %w", path, err)
+		}
+		out = append(out, folder)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read the folders below %s: %w", path, err)
+	}
+	return out, nil
 }
 
 // movedBookmark is 1 bookmark that a folder's rename moves: its id and the

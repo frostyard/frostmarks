@@ -22,8 +22,10 @@ frostmarksd [-state-dir DIR] [-socket PATH] [-debug] [-version]
 
 The daemon makes the state directory (0700) and opens
 `<state-dir>/frostmarks.db`, runs the outbox relay, and listens on the socket
-(0600, in a directory of 0700). It writes exactly `frostmarksd: serving on
-<path>` and a newline to the standard error once the socket accepts. On SIGINT or
+(0600, in a directory of 0700), which serves only the daemon's own user: another
+user's connection is closed before the server reads a byte of it. It writes
+exactly `frostmarksd: serving on <path>` and a newline to the standard error once
+the socket accepts. On SIGINT or
 SIGTERM it stops the server, then the relay, then closes the database, removes
 the socket, and exits 0.
 
@@ -83,9 +85,15 @@ space, so that each bookmark is 1 line.
 | 1 | the call failed: `marksctl: <error>` on the standard error, with the code of the API's error |
 | 2 | a usage error: no command, an unknown command, a missing or an extra argument, or a bad flag. The usage goes to the standard error. |
 
-A usage error prints no `marksctl:` line. The usage error of a missing
-`$XDG_RUNTIME_DIR` is no usage error: it is 1, with `marksctl: no socket path: set
-XDG_RUNTIME_DIR, or pass -socket`.
+A usage error prints 1 line that names the problem, and then the usage, on the
+standard error. The 4 lines are `marksctl: unknown command "nonsense"`,
+`marksctl get-bookmark: want 1 argument(s), and it has 0` (or `want at least 1
+argument` for a query), the flag package's own `flag provided but not defined:
+-bogus`, and `marksctl create-bookmark: -url is required`.
+
+A call's failure is no usage error: it exits 1 with `marksctl: <error>`. So does
+a host with no `$XDG_RUNTIME_DIR` and no `-socket`, with `marksctl: no socket
+path: set XDG_RUNTIME_DIR, or pass -socket`.
 
 ### The MCP client
 
@@ -111,7 +119,10 @@ bookmarked in <folder> as <id>`.
 1. `frostmarksd` exits 0 for a stop on SIGINT or SIGTERM, 1 for an error, and 2
    for a usage error: an unknown flag or an argument.
 2. `frostmarksd` refuses a socket path that holds a live socket of another daemon
-   with `another frostmarksd serves <path>`, and it replaces a stale socket.
+   with `another frostmarksd serves <path>`, and it replaces a socket whose dial
+   the kernel refused with `ECONNREFUSED`. Any other dial error stops it and
+   leaves the path as it is: a timeout or a permission error says nothing about
+   what holds the socket.
 3. `marksctl` exits 0 for a call that passed, 1 for a call that failed, and 2 for
    a usage error.
 4. `marksctl` prints 1 error line on the standard error for a failed call, and it

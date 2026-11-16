@@ -6,6 +6,8 @@ import (
 
 	"connectrpc.com/connect"
 
+	"github.com/frostyard/hearth/events"
+
 	marksv1 "github.com/frostyard/frostmarks/gen/go/frostyard/frostmarks/v1"
 )
 
@@ -215,4 +217,175 @@ func TestFolderPathRules(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestFolderControlCharacters checks that a folder path with a control character
+// is refused, in the creation of a folder and in the request of every RPC that
+// names a folder: SQLite's length and substr stop at a NUL, so such a path would
+// break the prefix comparisons of the store.
+func TestFolderControlCharacters(t *testing.T) {
+	app := app(t)
+	mustCreateFolder(t, app, "/work")
+	bookmark := mustCreateBookmark(t, app, &marksv1.CreateBookmarkRequest{Url: "https://example.com/a", Folder: "/work"})
+
+	bad := []string{"/a\x00b", "/a\nb", "/a\tb", "/a\x7fb", "/a\u0085b"}
+	for _, path := range bad {
+		_, err := app.API().CreateFolder(local(t), &marksv1.CreateFolderRequest{Path: path})
+		connectErr := wantCode(t, err, connect.CodeInvalidArgument)
+		if !strings.Contains(connectErr.Message(), "control character") {
+			t.Errorf("the refusal of %q = %q, want a control character", path, connectErr.Message())
+		}
+	}
+	if got := count(t, app, "folders"); got != 1 {
+		t.Errorf("the folders table holds %d rows, want the 1 of /work", got)
+	}
+
+	path := "/a\x00b"
+	tests := []struct {
+		// name names the case.
+		name string
+		// call runs the RPC with the path as its folder.
+		call func(t *testing.T) error
+	}{
+		{
+			name: "create-folder",
+			call: func(t *testing.T) error {
+				t.Helper()
+				_, err := app.API().CreateFolder(local(t), &marksv1.CreateFolderRequest{Path: path})
+				return err
+			},
+		},
+		{
+			name: "create-bookmark",
+			call: func(t *testing.T) error {
+				t.Helper()
+				_, err := app.API().CreateBookmark(local(t), &marksv1.CreateBookmarkRequest{Url: "https://example.com/b", Folder: path})
+				return err
+			},
+		},
+		{
+			name: "move-bookmark",
+			call: func(t *testing.T) error {
+				t.Helper()
+				_, err := app.API().MoveBookmark(local(t), &marksv1.MoveBookmarkRequest{Id: bookmark.GetId(), Folder: path})
+				return err
+			},
+		},
+		{
+			name: "list-bookmarks",
+			call: func(t *testing.T) error {
+				t.Helper()
+				_, err := app.API().ListBookmarks(local(t), &marksv1.ListBookmarksRequest{Folder: path})
+				return err
+			},
+		},
+		{
+			name: "search-bookmarks",
+			call: func(t *testing.T) error {
+				t.Helper()
+				_, err := app.API().SearchBookmarks(local(t), &marksv1.SearchBookmarksRequest{Query: "example", Folder: path})
+				return err
+			},
+		},
+		{
+			name: "list-folders",
+			call: func(t *testing.T) error {
+				t.Helper()
+				_, err := app.API().ListFolders(local(t), &marksv1.ListFoldersRequest{Folder: path})
+				return err
+			},
+		},
+		{
+			name: "delete-folder",
+			call: func(t *testing.T) error {
+				t.Helper()
+				_, err := app.API().DeleteFolder(local(t), &marksv1.DeleteFolderRequest{Path: path})
+				return err
+			},
+		},
+		{
+			name: "rename-folder, the old path",
+			call: func(t *testing.T) error {
+				t.Helper()
+				_, err := app.API().RenameFolder(local(t), &marksv1.RenameFolderRequest{Path: path, NewPath: "/kept"})
+				return err
+			},
+		},
+		{
+			name: "rename-folder, the new path",
+			call: func(t *testing.T) error {
+				t.Helper()
+				_, err := app.API().RenameFolder(local(t), &marksv1.RenameFolderRequest{Path: "/work", NewPath: path})
+				return err
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			connectErr := wantCode(t, test.call(t), connect.CodeInvalidArgument)
+			if !strings.Contains(connectErr.Message(), "control character") {
+				t.Errorf("the refusal = %q, want a control character", connectErr.Message())
+			}
+		})
+	}
+	if got := count(t, app, "folders"); got != 1 {
+		t.Errorf("the folders table holds %d rows after the refusals, want the 1 of /work", got)
+	}
+	if got := count(t, app, "bookmarks"); got != 1 {
+		t.Errorf("the bookmarks table holds %d rows, want the 1 of /work", got)
+	}
+}
+
+// TestFolderTopicLimit checks the longest event topic of a folder: the topic of
+// the moved_out event grows by 1 segment for each segment of the path, and by 3
+// bytes for each byte that a segment's encoding escapes, so a folder path is
+// refused when its topic passes hearth's limit, even when the path itself is
+// short.
+func TestFolderTopicLimit(t *testing.T) {
+	app := app(t)
+	base := len(marksv1.EventBookmarkMovedOut.Topic)
+
+	t.Run("an ASCII path just under the limit", func(t *testing.T) {
+		path := "/" + strings.Repeat("a", events.MaxTopicLen-base-1)
+		if len(path) > maxFolderLen {
+			t.Fatalf("the path is %d bytes, and it must be within %d", len(path), maxFolderLen)
+		}
+		topic, _, err := events.TopicOf(marksv1.EventBookmarkMovedOut, path)
+		if err != nil {
+			t.Fatalf("events.TopicOf of the path under the limit: %v", err)
+		}
+		if len(topic) != events.MaxTopicLen {
+			t.Fatalf("the topic is %d bytes, and the test wants the limit %d", len(topic), events.MaxTopicLen)
+		}
+		mustCreateFolder(t, app, path)
+	})
+
+	t.Run("an ASCII path just over the limit", func(t *testing.T) {
+		path := "/" + strings.Repeat("a", events.MaxTopicLen-base)
+		if len(path) > maxFolderLen {
+			t.Fatalf("the path is %d bytes, and it must be within %d", len(path), maxFolderLen)
+		}
+		_, err := app.API().CreateFolder(local(t), &marksv1.CreateFolderRequest{Path: path})
+		connectErr := wantCode(t, err, connect.CodeInvalidArgument)
+		if !strings.Contains(connectErr.Message(), "topic") {
+			t.Errorf("the refusal = %q, want the topic's limit", connectErr.Message())
+		}
+	})
+
+	t.Run("a short path of escaped bytes", func(t *testing.T) {
+		segment := strings.Repeat("é", maxFolderLen/3)
+		path := "/" + segment
+		if len(path) > maxFolderLen {
+			t.Fatalf("the path is %d bytes, and it must be within %d", len(path), maxFolderLen)
+		}
+		encoded := events.EncodeSegment(segment)
+		if want := base + 1 + len(encoded); want <= events.MaxTopicLen {
+			t.Fatalf("the topic is %d bytes, and the test wants more than %d", want, events.MaxTopicLen)
+		}
+		_, err := app.API().CreateFolder(local(t), &marksv1.CreateFolderRequest{Path: path})
+		connectErr := wantCode(t, err, connect.CodeInvalidArgument)
+		if !strings.Contains(connectErr.Message(), "topic") {
+			t.Errorf("the refusal = %q, want the topic's limit", connectErr.Message())
+		}
+	})
 }

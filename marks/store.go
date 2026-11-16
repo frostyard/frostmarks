@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/url"
+	"path/filepath"
 
 	_ "modernc.org/sqlite"
 
@@ -12,6 +14,10 @@ import (
 
 // schemaVersion is the version of the app's schema, in PRAGMA user_version.
 const schemaVersion = 1
+
+// pragmas are the pragmas of every connection: foreign keys on, a busy database
+// that waits 5 s before it reports a lock, and WAL.
+const pragmas = "_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
 
 // Open opens the app's database at path, it makes the schema, and it makes the
 // outbox's table.
@@ -24,7 +30,11 @@ const schemaVersion = 1
 // A second Open of the same database is a no-op: PRAGMA user_version tells it
 // that the schema is there.
 func Open(ctx context.Context, path string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
+	dsn, err := dataSourceName(path)
+	if err != nil {
+		return nil, err
+	}
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open the database %s: %w", path, err)
 	}
@@ -38,6 +48,22 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 		return nil, err
 	}
 	return db, nil
+}
+
+// dataSourceName returns the URI of the app's database at path, with the pragmas
+// of every connection.
+//
+// The path is escaped as a URL path: a directory may hold any character, and a
+// URI reads an unescaped "?" or "#" as its own syntax, which would open another
+// file or none. A relative path is made absolute first, so that the URI names 1
+// file whatever the process's directory is.
+func dataSourceName(path string) (string, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("read the database's path %s: %w", path, err)
+	}
+	uri := &url.URL{Scheme: "file", Path: absolute, RawQuery: pragmas}
+	return uri.String(), nil
 }
 
 // migrate runs the schema's steps up to schemaVersion, each in 1 transaction,

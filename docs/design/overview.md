@@ -100,8 +100,10 @@ tools, and stops the daemon with SIGTERM.
 
 ## Operational notes
 
-- The socket's directory is 0700 and the socket is 0600: the local user only. A
-  stale socket is removed; a live 1 is a refusal that names the path.
+- The socket's directory is 0700 and the socket is 0600, and the listener closes
+  a peer of another user before the server reads a byte, so a connection of
+  another user gets no response. A socket whose dial is refused is stale and is
+  removed; a live 1, and any other dial error, is a refusal that names the path.
 - The database holds 1 connection, so 1 long transaction holds the relay. 1
   change touches 1 to a few rows.
 - A migration runs on the next start, in 1 transaction. A database of a later

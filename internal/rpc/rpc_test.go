@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -66,14 +67,21 @@ func shortDir(t *testing.T) string {
 	return dir
 }
 
-// serve serves the API on a private socket, and it stops the server when the
-// test ends.
+// serve serves the API to the local user on a private socket, and it stops the
+// server when the test ends.
 func serve(t *testing.T, api marksv1.MarksAPI) string {
 	t.Helper()
+	return serveOn(t, api, os.Getuid())
+}
+
+// serveOn serves the API to the processes of uid on a private socket, and it
+// stops the server when the test ends.
+func serveOn(t *testing.T, api marksv1.MarksAPI, uid int) string {
+	t.Helper()
 	socket := filepath.Join(shortDir(t), "s.sock")
-	listener, err := Listen(socket)
+	listener, err := listen(socket, uid)
 	if err != nil {
-		t.Fatalf("Listen: %v", err)
+		t.Fatalf("listen: %v", err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
@@ -87,6 +95,27 @@ func serve(t *testing.T, api marksv1.MarksAPI) string {
 		}
 	})
 	return socket
+}
+
+// closeSocket makes 1 socket file that no listener holds: the listener is closed
+// with its unlink turned off, so the path stays and the next dial is refused.
+func closeSocket(t *testing.T, path string) {
+	t.Helper()
+	listener, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatalf("make the socket %s: %v", path, err)
+	}
+	unixListener, ok := listener.(*net.UnixListener)
+	if !ok {
+		t.Fatalf("the listener of %s is a %T, and not a *net.UnixListener", path, listener)
+	}
+	unixListener.SetUnlinkOnClose(false)
+	if err := unixListener.Close(); err != nil {
+		t.Fatalf("close the socket %s: %v", path, err)
+	}
+	if _, err := os.Lstat(path); err != nil {
+		t.Fatalf("the closed socket %s stays: %v", path, err)
+	}
 }
 
 // unixTransport returns the transport that dials 1 Unix socket.
@@ -259,9 +288,8 @@ func TestHandlerDenied(t *testing.T) {
 	if err != nil {
 		t.Fatalf("authz.NewGrant: %v", err)
 	}
-	server := httptest.NewServer(Handler(restricted{MarksAPI: app.API(), grant: grant}))
-	t.Cleanup(server.Close)
-	client := marksv1connect.NewMarksClient(server.Client(), server.URL)
+	socket := serve(t, restricted{MarksAPI: app.API(), grant: grant})
+	client := marksv1connect.NewMarksClient(&http.Client{Transport: unixTransport(socket)}, "http://frostmarks")
 
 	_, err = client.ListBookmarks(t.Context(), &marksv1.ListBookmarksRequest{Folder: "/home"})
 	if code := connect.CodeOf(err); code != connect.CodePermissionDenied {
@@ -331,13 +359,7 @@ func TestListen(t *testing.T) {
 
 	t.Run("a stale socket is replaced", func(t *testing.T) {
 		socket := filepath.Join(shortDir(t), "s.sock")
-		stale, err := net.Listen("unix", socket)
-		if err != nil {
-			t.Fatalf("make the stale socket: %v", err)
-		}
-		if err := stale.Close(); err != nil {
-			t.Fatalf("close the stale socket: %v", err)
-		}
+		closeSocket(t, socket)
 		listener, err := Listen(socket)
 		if err != nil {
 			t.Fatalf("Listen over the stale socket: %v", err)
@@ -391,4 +413,123 @@ func TestNewClient(t *testing.T) {
 	if code := connect.CodeOf(err); code != connect.CodeNotFound {
 		t.Fatalf("the code of the missing bookmark = %s, want not_found: %v", code, err)
 	}
+}
+
+// TestListenPeerUID checks that a socket serves only the daemon's own user: the
+// listener closes every other peer before the server reads a byte, so such a peer
+// gets no response at all. The socket's permission is the second guard, and it
+// comes a moment after the socket exists.
+func TestListenPeerUID(t *testing.T) {
+	app := testApp(t)
+	mustCreateFolder(t, app, "/work")
+
+	t.Run("the daemon's own user is served", func(t *testing.T) {
+		socket := serve(t, app.API())
+		client := NewClient(socket)
+		listed, err := client.ListBookmarks(t.Context(), &marksv1.ListBookmarksRequest{Folder: "/work"})
+		if err != nil {
+			t.Fatalf("ListBookmarks: %v", err)
+		}
+		if len(listed.GetBookmarks()) != 0 {
+			t.Errorf("the list = %d bookmarks, want none", len(listed.GetBookmarks()))
+		}
+	})
+
+	t.Run("another user is closed", func(t *testing.T) {
+		socket := serveOn(t, app.API(), os.Getuid()+1)
+		conn, err := net.Dial("unix", socket)
+		if err != nil {
+			t.Fatalf("dial the socket: %v", err)
+		}
+		t.Cleanup(func() {
+			_ = conn.Close()
+		})
+		// The peer writes 1 request, and it reads: the listener closes the
+		// connection, so the write may fail, and no byte of a response comes.
+		if _, err := conn.Write([]byte("GET / HTTP/1.1\r\nHost: frostmarks\r\n\r\n")); err != nil {
+			t.Logf("the write of the refused peer: %v", err)
+		}
+		buffer := make([]byte, 512)
+		n, err := conn.Read(buffer)
+		if n != 0 {
+			t.Fatalf("the refused peer read %d bytes, want none: %q", n, buffer[:n])
+		}
+		if err == nil {
+			t.Fatal("the refused peer's read passed, want an error")
+		}
+	})
+}
+
+// TestClearPathDialErrors checks the rule of a socket path that holds a socket:
+// only the kernel's refusal means that nothing listens there, so only a refusal
+// removes the path.
+func TestClearPathDialErrors(t *testing.T) {
+	refused := func(string) (net.Conn, error) {
+		return nil, fmt.Errorf("dial unix: %w", syscall.ECONNREFUSED)
+	}
+	slow := func(string) (net.Conn, error) {
+		return nil, fmt.Errorf("dial unix: %w", os.ErrDeadlineExceeded)
+	}
+	forbidden := func(string) (net.Conn, error) {
+		return nil, fmt.Errorf("dial unix: %w", fs.ErrPermission)
+	}
+
+	t.Run("a refusal removes the stale socket", func(t *testing.T) {
+		path := filepath.Join(shortDir(t), "s.sock")
+		closeSocket(t, path)
+		if err := clearPath(path, refused); err != nil {
+			t.Fatalf("clearPath: %v", err)
+		}
+		if _, err := os.Lstat(path); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("the stale socket %s is there, and the refusal removes it", path)
+		}
+	})
+
+	kept := []struct {
+		// name names the case.
+		name string
+		// dial is the dial that fails.
+		dial dialSocket
+		// err is the error that the dial wraps.
+		err error
+	}{
+		{name: "a timeout keeps the socket", dial: slow, err: os.ErrDeadlineExceeded},
+		{name: "a permission error keeps the socket", dial: forbidden, err: fs.ErrPermission},
+	}
+	for _, test := range kept {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(shortDir(t), "s.sock")
+			closeSocket(t, path)
+			err := clearPath(path, test.dial)
+			if err == nil {
+				t.Fatalf("clearPath passed, and it must fail")
+			}
+			if !errors.Is(err, test.err) {
+				t.Errorf("the error = %v, want the %v of the dial", err, test.err)
+			}
+			if _, err := os.Lstat(path); err != nil {
+				t.Errorf("the socket %s is gone, and a failed dial keeps it: %v", path, err)
+			}
+		})
+	}
+
+	t.Run("a live socket is another daemon", func(t *testing.T) {
+		path := filepath.Join(shortDir(t), "s.sock")
+		closeSocket(t, path)
+		conn, peer := net.Pipe()
+		t.Cleanup(func() {
+			_ = conn.Close()
+			_ = peer.Close()
+		})
+		err := clearPath(path, func(string) (net.Conn, error) { return conn, nil })
+		if err == nil {
+			t.Fatalf("clearPath passed, and another daemon serves the socket")
+		}
+		if want := "another frostmarksd serves " + path; err.Error() != want {
+			t.Errorf("the error = %q, want %q", err.Error(), want)
+		}
+		if _, err := os.Lstat(path); err != nil {
+			t.Errorf("the socket %s is gone, and a live socket stays: %v", path, err)
+		}
+	})
 }

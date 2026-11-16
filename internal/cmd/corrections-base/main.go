@@ -10,7 +10,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"flag"
@@ -139,49 +141,67 @@ func parseChanges(output string) []change {
 	return changes
 }
 
-// record is the part of 1 correction record that this check compares.
-type record struct {
-	Date       string `json:"date"`
-	Scope      string `json:"scope"`
-	Correction string `json:"correction"`
-	Evidence   string `json:"evidence"`
-	PromotedTo string `json:"promoted_to"`
+// recordMembers names the 5 members of 1 correction record, in the order of its
+// canonical form (frostyard/core ADR-0081, row B2).
+var recordMembers = []string{"date", "scope", "correction", "evidence", "promoted_to"}
+
+// promotedTo is the member that a pull request may fill, when the base leaves it
+// empty.
+const promotedTo = "promoted_to"
+
+// recordValues holds the raw text of each member of 1 record file: the bytes of
+// the member's value as the file has them, quotes, escapes and all.
+type recordValues map[string]jsontext.Value
+
+// readRecord returns the raw text of each member of 1 record's data.
+//
+// The text of a member is kept byte for byte (jsontext.AllowInvalidUTF8). The
+// canonical form of a record may hold an escaped lone surrogate, such as
+// "\ud800", which a decoder into a Go string either refuses or turns into
+// U+FFFD, and 2 such records must still compare as their files have them.
+func readRecord(data []byte) (recordValues, error) {
+	members := make(recordValues, len(recordMembers))
+	if err := json.Unmarshal(data, &members, jsontext.AllowInvalidUTF8(true)); err != nil {
+		return nil, fmt.Errorf("read the record: %w", err)
+	}
+	return members, nil
 }
 
 // recordProblems returns each change of 1 record file that the inbox does not
-// allow: a changed field, except an empty promoted_to that is now filled.
+// allow: a changed member, except an empty promoted_to that is now filled.
 func recordProblems(path string, before, after []byte) []string {
-	var old, next record
-	if err := unmarshal(before, &old); err != nil {
+	old, err := readRecord(before)
+	if err != nil {
 		return []string{fmt.Sprintf("%s: the base's record cannot be read: %v", path, err)}
 	}
-	if err := unmarshal(after, &next); err != nil {
+	next, err := readRecord(after)
+	if err != nil {
 		return []string{fmt.Sprintf("%s: the record cannot be read: %v", path, err)}
 	}
 	var problems []string
-	for _, field := range []struct {
-		name     string
-		old, new string
-	}{
-		{"date", old.Date, next.Date},
-		{"scope", old.Scope, next.Scope},
-		{"correction", old.Correction, next.Correction},
-		{"evidence", old.Evidence, next.Evidence},
-	} {
-		if field.old != field.new {
-			problems = append(problems, fmt.Sprintf("%s: %s changed from %q to %q; a record's text is permanent", path, field.name, field.old, field.new))
+	for _, name := range recordMembers {
+		if name == promotedTo {
+			continue
+		}
+		if !bytes.Equal(old[name], next[name]) {
+			problems = append(problems, fmt.Sprintf("%s: %s changed from %s to %s; a record's text is permanent",
+				path, name, textOf(old[name]), textOf(next[name])))
 		}
 	}
-	if old.PromotedTo != next.PromotedTo && (old.PromotedTo != "" || next.PromotedTo == "") {
-		problems = append(problems, fmt.Sprintf("%s: promoted_to changed from %q to %q; only an empty promoted_to may be filled", path, old.PromotedTo, next.PromotedTo))
+	// Only an empty promoted_to may be filled. A member that the base's record
+	// does not have is no empty 1.
+	if !bytes.Equal(old[promotedTo], next[promotedTo]) && (string(old[promotedTo]) != `""` || string(next[promotedTo]) == `""` || len(next[promotedTo]) == 0) {
+		problems = append(problems, fmt.Sprintf("%s: promoted_to changed from %s to %s; only an empty promoted_to may be filled",
+			path, textOf(old[promotedTo]), textOf(next[promotedTo])))
 	}
 	return problems
 }
 
-// unmarshal reads 1 record.
-func unmarshal(data []byte, rec *record) error {
-	if err := json.Unmarshal(data, rec); err != nil {
-		return fmt.Errorf("read the record: %w", err)
+// textOf returns the raw text of 1 member for a message, or a marker when the
+// record has no such member.
+func textOf(value jsontext.Value) string {
+	if len(value) == 0 {
+		return "<missing>"
 	}
-	return nil
+	return string(value)
 }

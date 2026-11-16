@@ -32,20 +32,21 @@ Start the daemon:
 frostmarksd
 ```
 
-It prints nothing when it is ready, and it serves
-`$XDG_RUNTIME_DIR/frostmarks.sock`. Run it in the background, or under your
-service manager of choice.
+It prints `frostmarksd: serving on <path>` to its standard error when it is
+ready, and it serves `$XDG_RUNTIME_DIR/frostmarks.sock`. Run it in the
+background, or under your service manager of choice. A host without
+`XDG_RUNTIME_DIR` has no default socket, so its service passes `-socket`.
 
 !!! note "Check the install"
 
-    Run `marksctl list-folders`. An empty table means that the daemon answers
-    and the store is new.
+    Run `marksctl list-folders`. It prints no line while the store holds no
+    folder, which means that the daemon answers and the store is new.
 
 ### Pin a version
 
 A release is a tag in the `vX.Y.Z` series of
-[frostyard/frostmarks](https://github.com/frostyard/frostmarks/tags). To
-install a version that a script pins:
+[frostyard/frostmarks](https://github.com/frostyard/frostmarks/tags). There is
+no tag yet; once there is 1, name it to install the version that a script pins:
 
 ```sh
 go install github.com/frostyard/frostmarks/cmd/frostmarksd@v0.1.0
