@@ -33,16 +33,23 @@ repository as a product, or retires the work. Its exit criteria are the pilot's
 
 ## Phase 2 — The lodge app and the pilot
 
-- The web UI on frostui at `/app/marks/`, served on the app's lodge socket.
-- The save page `/app/marks/save?url=&title=`, which a browser bookmarklet
-  opens, so that 1 click stores a bookmark.
-- The lodge socket and the broker transport: hearth's adapter trusts
-  `Lodge-Principal` and `Lodge-Grant` only on the app's lodge socket, after the
-  peer check, and the app publishes its events to lodge's broker socket.
-  `internal/repocheck` still refuses a lodge import in `marks/`, `cmd/` and
-  `internal/rpc/`: the adapter, not the app, carries the lodge headers.
-- An attested `frostyard-frostmarks` `.deb` with a systemd service, a
-  `sysusers.d` user `frostmarks`, and `StateDirectory=frostmarks`.
+- **Built (2026-11-16):** the web UI at `/app/marks/`, React with lodge's UI
+  package and a Connect client generated from the proto, which lodge serves
+  from disk ([ADR-0008](../adr/0008-build-the-web-ui-with-react-and-lodge-ui.md)).
+- **Built:** the save page `/app/marks/save?url=&title=`, which the bookmarklet
+  opens through the shell's canonical URL `/marks/save`, so that 1 click stores
+  a bookmark ([specs/lodge-app.md](../specs/lodge-app.md#the-save-page)).
+- **Built:** `frostmarksd -lodge`: lodge's app socket, on which hearth's
+  adapter trusts `Lodge-Principal` and `Lodge-Grant` only after the peer check,
+  and the broker transport over `/run/lodge/nats.sock`
+  ([ADR-0007](../adr/0007-run-on-lodge-from-a-hand-installed-deb.md)).
+  `internal/repocheck` still refuses a lodge import: hearth's adapter, not the
+  app, carries the lodge headers.
+- **Built:** an attested `frostyard-frostmarks` `.deb` from a `vX.Y.Z` tag, with
+  the systemd socket and service, a `sysusers.d` user `frostmarks`, and
+  `StateDirectory=frostmarks` ([design/overview.md](../design/overview.md)).
+- **Next:** Brian tags `v0.1.0` and installs the `.deb` on lodge's host; then
+  the pilot runs its acceptance from lodge's runbook.
 - **Done when (the pilot, which is also the repository's exit criteria):**
   - Brian tells Chani to get bookmark access, lodge's consent page shows the
     requested scopes, Brian narrows and approves, and Chani's bookmark tools
@@ -63,22 +70,25 @@ repository as a product, or retires the work. Its exit criteria are the pilot's
 
 - A browser extension, as an alternative to the bookmarklet.
 - Import from other bookmark managers.
-- A tagged release series, which needs its own release workflow
-  (`.github/workflows/release.yml`), `.goreleaser.yaml` and `packaging/`.
+- An arm64 `.deb`, a sysext and a Flatpak.
 
 ## Open questions
 
-- **Question:** does the `.deb` ship the daemon only, or the CLI too, and where
-  does the unit enable it? Phase 2 decides, and records it as an ADR.
-- **Question:** does the web UI need the store's full-text search, or a plain
-  folder list? Phase 2 decides from the pilot's use of it.
+- **Answered (2026-11-16):** the `.deb` ships the daemon and the CLI, and it
+  enables no unit: the administrator enables `frostmarks.socket`
+  ([ADR-0007](../adr/0007-run-on-lodge-from-a-hand-installed-deb.md)).
+- **Answered (2026-11-16):** the web UI uses the store's full-text search, as
+  the CLI and the agents do: 1 search field over the current folder and below.
 
 ## References
 
 - Implements: [design/overview.md](../design/overview.md),
-  [specs/api.md](../specs/api.md), [specs/cli.md](../specs/cli.md)
+  [specs/api.md](../specs/api.md), [specs/cli.md](../specs/cli.md),
+  [specs/lodge-app.md](../specs/lodge-app.md)
 - Rationale: [ADR-0004](../adr/0004-serve-the-api-over-connect-on-a-private-socket.md),
   [ADR-0005](../adr/0005-run-the-repository-gate-in-go.md),
-  [ADR-0006](../adr/0006-store-bookmarks-in-sqlite-with-full-text-search.md)
+  [ADR-0006](../adr/0006-store-bookmarks-in-sqlite-with-full-text-search.md),
+  [ADR-0007](../adr/0007-run-on-lodge-from-a-hand-installed-deb.md),
+  [ADR-0008](../adr/0008-build-the-web-ui-with-react-and-lodge-ui.md)
 - Builds on: [frostyard/core ADR-0085](https://github.com/frostyard/core/blob/main/docs/adr/0085-build-new-first-party-apps-on-hearth-with-lodge-as-their-hub.md),
   [frostyard/core Plan 0002](https://github.com/frostyard/core/blob/main/docs/plans/0002-org-portfolio-roadmap.md#incubating-repositories)

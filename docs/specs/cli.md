@@ -10,14 +10,15 @@ MCP client that starts `marksctl mcp`.
 ### `frostmarksd`
 
 ```
-frostmarksd [-state-dir DIR] [-socket PATH] [-debug] [-version]
+frostmarksd [-state-dir DIR] [-socket PATH] [-lodge] [-debug] [-version]
 ```
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
 | `-state-dir` | `$XDG_STATE_HOME/frostmarks`, else `$HOME/.local/state/frostmarks` | the directory of `frostmarks.db` |
 | `-socket` | `$XDG_RUNTIME_DIR/frostmarks.sock` | the private Unix socket |
-| `-debug` | off | log each published event at debug level |
+| `-lodge` | off | also serve lodge's app socket, and publish the events to lodge's broker ([lodge-app.md](lodge-app.md#frostmarksd--lodge)) |
+| `-debug` | off | log each published event at debug level (without `-lodge`) |
 | `-version` | | print the version to the standard error and exit |
 
 The daemon makes the state directory (0700) and opens
@@ -31,6 +32,12 @@ the socket, and exits 0.
 
 A host that runs the daemon as a service passes both paths, for example
 `-state-dir /var/lib/frostmarks -socket /run/frostmarks/private.sock`.
+
+With `-lodge`, it also serves lodge's app socket, which systemd passes (or,
+under `LODGE_ROOT`, which it makes), and it publishes each event to lodge's
+broker socket instead of its own bus; [lodge-app.md](lodge-app.md) is that
+contract. `LODGE_ROOT` and `LODGE_UID` are read only with `-lodge`. A start
+without a lodge socket, or without user `lodge` outside `LODGE_ROOT`, exits 1.
 
 ### `marksctl`
 
@@ -133,7 +140,8 @@ bookmarked in <folder> as <id>`.
 
 ## References
 
-- Rationale: [ADR-0004](../adr/0004-serve-the-api-over-connect-on-a-private-socket.md), [ADR-0006](../adr/0006-store-bookmarks-in-sqlite-with-full-text-search.md)
+- Rationale: [ADR-0004](../adr/0004-serve-the-api-over-connect-on-a-private-socket.md), [ADR-0006](../adr/0006-store-bookmarks-in-sqlite-with-full-text-search.md), [ADR-0007](../adr/0007-run-on-lodge-from-a-hand-installed-deb.md)
 - Context: [design/overview.md](../design/overview.md)
 - The API that the commands call: [specs/api.md](api.md)
-- Built in: [plan 0001, phase 1](../plans/0001-roadmap.md)
+- The lodge mode: [specs/lodge-app.md](lodge-app.md)
+- Built in: [plan 0001, phase 1](../plans/0001-roadmap.md), and `-lodge` in [phase 2](../plans/0001-roadmap.md#phase-2--the-lodge-app-and-the-pilot)

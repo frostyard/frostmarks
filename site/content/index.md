@@ -68,13 +68,13 @@ commands. [Use marksctl](guides/marksctl.md) stores the first bookmark.
     bookmark is checked against the folder that it holds, inside the
     transaction that reads it.
 
--   **No lodge needed**
+-   **No lodge needed, and better with it**
 
     ---
 
-    The daemon, the CLI and the MCP server work on their own. A lodge app, with
-    a web UI, a save page for a browser bookmarklet and agent grants, comes in
-    a later phase.
+    The daemon, the CLI and the MCP server work on their own. On lodge, the
+    same daemon adds a web UI, a save page for a browser bookmarklet, and
+    bookmark tools for the agents that you approve.
 
 </div>
 
@@ -98,7 +98,11 @@ commands. [Use marksctl](guides/marksctl.md) stores the first bookmark.
 
     Read a folder path, and see what a grant covers.
 
-- <span class="fy-index">05</span> **[Commands](reference/commands.md)**
+- <span class="fy-index">05</span> **[Run on lodge](guides/lodge.md)**
+
+    Install the package on lodge's host, and add the bookmarklet.
+
+- <span class="fy-index">06</span> **[Commands](reference/commands.md)**
 
     Look up every option of the 2 commands.
 

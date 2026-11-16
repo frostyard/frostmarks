@@ -1,0 +1,8 @@
+# The store stays inside the nsl machine; without this pnpm puts it beside the
+# project, in the host's home directory.
+storeDir: /var/tmp/frostmarks/pnpm-store
+packageImportMethod: copy
+# buf's install script only checks its platform binary, which pnpm installs as
+# an optional dependency; it never runs.
+allowBuilds:
+  "@bufbuild/buf": false

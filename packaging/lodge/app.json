@@ -1,0 +1,11 @@
+{
+  "contract": 1,
+  "id": "marks",
+  "name": "Bookmarks",
+  "icon": "icon.svg",
+  "version": "dev",
+  "user": "frostmarks",
+  "key": "b",
+  "hearth": "manifest.json",
+  "tools": "tools.json"
+}

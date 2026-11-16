@@ -1,0 +1,43 @@
+# frostmarks' daemon unit, behind lodge (docs/specs/lodge-app.md, and lodge's
+# docs/specs/app-contract.md, Install layout). The socket unit owns the lodge
+# socket and passes it to the daemon's -lodge flag; the private socket is the
+# daemon's own, in the runtime directory that systemd makes. The daemon runs as
+# its own system user, in group lodge-apps for lodge's inference socket, and
+# never in group lodge.
+[Unit]
+Description=frostmarks, the bookmark manager behind lodge
+Requires=frostmarks.socket
+After=frostmarks.socket
+
+[Service]
+Type=exec
+User=frostmarks
+Group=frostmarks
+SupplementaryGroups=lodge-apps
+ExecStart=/usr/bin/frostmarksd -lodge -state-dir /var/lib/frostmarks -socket /run/frostmarks/private.sock
+StateDirectory=frostmarks
+StateDirectoryMode=0700
+RuntimeDirectory=frostmarks
+RuntimeDirectoryMode=0700
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

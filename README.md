@@ -27,9 +27,10 @@ read and file them.
 - **Folders decide access.** A grant names the capabilities and the folders it
   covers, and each stored bookmark is checked against the folder it holds
   ([folders and permissions](https://frostyard.github.io/frostmarks/guides/folders-and-permissions/)).
-- **No lodge needed.** The daemon, the CLI and the MCP server work on their own;
-  a lodge app comes in a later phase
-  ([the roadmap](docs/plans/0001-roadmap.md)).
+- **No lodge needed, and a lodge app too.** The daemon, the CLI and the MCP
+  server work on their own. On lodge, the same daemon adds a web UI, a save
+  page for a browser bookmarklet, and bookmark tools for the agents that you
+  approve ([run on lodge](https://frostyard.github.io/frostmarks/guides/lodge/)).
 
 ## Install
 
@@ -46,6 +47,18 @@ Go puts them in the directory that `go env GOBIN` names, or in
 
 [Install](https://frostyard.github.io/frostmarks/getting-started/install/)
 lists the requirements and how to pin a version.
+
+On a lodge host, install the release's `frostyard-frostmarks` `.deb` instead,
+then start its socket and tell lodge:
+
+```sh
+sudo apt install ./frostyard-frostmarks_<version>_amd64.deb
+sudo systemctl enable --now frostmarks.socket
+sudo lodgectl reload
+```
+
+[Run on lodge](https://frostyard.github.io/frostmarks/guides/lodge/) covers the
+attestation and the update.
 
 ## Use
 
@@ -73,6 +86,14 @@ To give an MCP client the tools, add this entry to its configuration:
 [Use marksctl](https://frostyard.github.io/frostmarks/guides/marksctl/) walks
 through each command.
 
+On lodge, this bookmarklet saves the page you read: it opens the save page in a
+new window. Make a bookmark with it as the address, with `LODGE` replaced by your
+lodge's name, or drag it from **Bookmarklet** in the web UI:
+
+```text
+javascript:void(window.open('https://LODGE/marks/save?url='+encodeURIComponent(location.href)+'&title='+encodeURIComponent(document.title),'_blank','noopener'))
+```
+
 ## How it works
 
 1 Protobuf service, `frostyard.frostmarks.v1.Marks`, is the whole contract: the
@@ -87,8 +108,11 @@ that is stored. [The design](docs/design/overview.md) shows how the parts fit.
 
 ```sh
 mise install   # the pinned tools: golangci-lint, buf, protoc-gen-go, svu
-make ci        # what CI runs: verify, the generated code, race, cross-builds, the manifest
+make ci        # what CI runs: verify, the generated code, race, cross-builds, the manifest, the web UI
 ```
+
+The web UI in `web/` builds and tests in the nsl machine (`make web-check`,
+`make web-build`), never on the host.
 
 [Build from source](https://frostyard.github.io/frostmarks/contributing/build/)
 explains each target.

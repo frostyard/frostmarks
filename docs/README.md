@@ -19,6 +19,8 @@ Docs are split by the question they answer:
 - [0004 — Serve the API over Connect on a private socket](adr/0004-serve-the-api-over-connect-on-a-private-socket.md)
 - [0005 — Run the repository gate in Go](adr/0005-run-the-repository-gate-in-go.md)
 - [0006 — Store bookmarks in SQLite with full-text search](adr/0006-store-bookmarks-in-sqlite-with-full-text-search.md)
+- [0007 — Run on lodge from a hand-installed .deb](adr/0007-run-on-lodge-from-a-hand-installed-deb.md)
+- [0008 — Build the web UI with React and lodge-ui](adr/0008-build-the-web-ui-with-react-and-lodge-ui.md)
 
 ### Org-wide decisions
 
@@ -33,6 +35,7 @@ Docs are split by the question they answer:
 
 - [API](specs/api.md)
 - [CLI](specs/cli.md)
+- [frostmarks as a lodge app](specs/lodge-app.md)
 
 ### Plans
 

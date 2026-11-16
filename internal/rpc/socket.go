@@ -23,10 +23,41 @@ func parentDir(path string) string {
 // makeDir makes 1 directory and its parents, with the permission of a socket's
 // directory. A directory that is there keeps its permission.
 func makeDir(dir string) error {
-	if err := os.MkdirAll(dir, dirPerm); err != nil {
+	return makeDirMode(dir, dirPerm)
+}
+
+// makeDirMode makes 1 directory and its parents with the given permission. A
+// directory that is there keeps its permission.
+//
+// os.MkdirAll masks the permission with the process's umask, and the lodge
+// socket's directory is 0755 whatever the daemon's umask is: each directory that
+// the call makes is set to perm once it exists.
+func makeDirMode(dir string, perm os.FileMode) error {
+	missing := missingDirs(dir)
+	if err := os.MkdirAll(dir, perm); err != nil {
 		return fmt.Errorf("make the socket's directory %s: %w", dir, err)
 	}
+	for _, path := range missing {
+		if err := os.Chmod(path, perm); err != nil {
+			return fmt.Errorf("set the permission of %s: %w", path, err)
+		}
+	}
 	return nil
+}
+
+// missingDirs returns the directories of 1 path that are not there, from the
+// path itself up to the first directory that is.
+func missingDirs(dir string) []string {
+	var missing []string
+	for path := filepath.Clean(dir); ; path = filepath.Dir(path) {
+		if _, err := os.Lstat(path); err == nil {
+			return missing
+		}
+		missing = append(missing, path)
+		if parent := filepath.Dir(path); parent == path {
+			return missing
+		}
+	}
 }
 
 // dialSocket dials 1 socket path, and it is the seam of the tests.

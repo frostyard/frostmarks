@@ -1,4 +1,4 @@
-.PHONY: help build fmt lint lint-version-check test race cross verify generate gen-check manifest-check corrections-base vulncheck check ci clean site site-serve bump svu-version-check
+.PHONY: help build fmt lint lint-version-check test race cross verify generate gen-check manifest-check corrections-base vulncheck check ci clean web-check web-build web-generate web-fmt deb deb-check site site-serve bump svu-version-check
 
 # The version that make bump gives the next tag, and that make build writes into
 # the commands.
@@ -122,10 +122,53 @@ vulncheck: ## Report reachable vulnerabilities (govulncheck; needs the network)
 
 check: fmt verify ## Format, then verify (the developer gate)
 
-ci: verify gen-check race cross corrections-base manifest-check ## verify plus the generated code, race, cross-builds, corrections and the manifest diff
+ci: verify gen-check race cross corrections-base manifest-check web-check ## verify plus the generated code, race, cross-builds, corrections, the manifest diff and the web UI (nsl)
 
 clean: ## Remove build output
 	rm -rf build dist coverage.out coverage.html
+
+# The web UI (web/, docs/adr/0008) builds and tests in the nsl machine, never
+# on the host: Node and pnpm are there. CI and the release, whose runners have
+# Node, run the same targets with IN_NSL='sh -c'. git in the nsl machine cannot
+# read a worktree's .git file, whose path is the host's, so the web tools look
+# for no repository above the checkout (GIT_CEILING_DIRECTORIES).
+NSL_MACHINE ?= lodge
+IN_NSL ?= nsl run -m $(NSL_MACHINE) sh -lc
+WEB_ENV = export GIT_CEILING_DIRECTORIES="$$PWD" && cd web && pnpm install --frozen-lockfile --silent
+# The TypeScript code of the proto, written by the protoc-gen-es that
+# web/package.json pins, from the repository's buf workspace.
+WEB_GENERATE = node_modules/.bin/buf generate .. --template buf.gen.yaml --path ../proto/frostyard
+
+web-check: ## Lint (Biome), typecheck and test web/, and compare web/src/gen with a fresh run (nsl)
+	$(IN_NSL) '$(WEB_ENV) && pnpm run check && tmp=$$(mktemp -d) && trap "rm -rf $$tmp" EXIT && $(WEB_GENERATE) -o "$$tmp" && if ! diff -r "$$tmp/src/gen" src/gen; then echo "web-check: web/src/gen differs from a fresh run: run make web-generate and commit the result"; exit 1; fi'
+
+web-build: ## Build the web UI into web/dist, for /app/marks/ (nsl)
+	$(IN_NSL) '$(WEB_ENV) && pnpm run build'
+
+web-generate: ## Write web/src/gen from the proto with protoc-gen-es (nsl)
+	$(IN_NSL) '$(WEB_ENV) && rm -rf src/gen && $(WEB_GENERATE)'
+
+web-fmt: ## Format web/ with Biome (nsl)
+	$(IN_NSL) '$(WEB_ENV) && pnpm run fmt'
+
+# The .deb (docs/specs/lodge-app.md). make deb stages the install tree under
+# build/deb/root and hands it to the nFPM that mise.toml pins; make deb-check
+# reads the package back in Go. make web-build writes web/dist first.
+WEB_DIST := web/dist
+
+deb: ## Build the .deb into dist/ (DEB_VERSION, and a built web/dist; nfpm)
+	@test -n "$(DEB_VERSION)" || { echo "make deb needs DEB_VERSION, such as DEB_VERSION=0.1.0"; exit 1; }
+	@test -f "$(WEB_DIST)/index.html" || { echo "$(WEB_DIST) is not built: run make web-build (nsl)"; exit 1; }
+	rm -rf build/deb
+	mkdir -p build/deb/bin dist
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-X main.version=$(DEB_VERSION)" -o build/deb/bin/ ./cmd/frostmarksd ./cmd/marksctl
+	go run ./internal/cmd/stage -version "$(DEB_VERSION)" -bin build/deb/bin -web "$(WEB_DIST)" -out build/deb/root
+	DEB_VERSION=$(DEB_VERSION) nfpm package -p deb -f packaging/nfpm.yaml -t dist/
+	$(MAKE) --no-print-directory deb-check
+
+deb-check: ## Check the .deb in dist/ in Go (DEB_VERSION)
+	@test -n "$(DEB_VERSION)" || { echo "make deb-check needs DEB_VERSION, such as DEB_VERSION=0.1.0"; exit 1; }
+	go run ./internal/cmd/debcheck -deb "dist/frostyard-frostmarks_$(DEB_VERSION)_amd64.deb" -version "$(DEB_VERSION)"
 
 # The documentation site (site/, frostyard/core ADR-0070), built with pinned
 # ProperDocs and MaterialX in a Python venv under build/. No gate (check,

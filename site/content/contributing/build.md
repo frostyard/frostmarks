@@ -1,15 +1,15 @@
 # Build from source
 
-The gate needs Go, `make` and the 4 tools that `mise.toml` pins. It needs no
+The gate needs Go, `make`, the tools that `mise.toml` pins, and the nsl machine `lodge` for the web UI. It needs no
 package manager beyond that, and no network access in its tests.
 
 ## Build and check
 
 ```sh
-mise install   # golangci-lint, buf, protoc-gen-go, svu
+mise install   # golangci-lint, buf, protoc-gen-go, svu, nfpm
 make build     # frostmarksd and marksctl into build/
 make check     # format, then verify
-make ci        # what CI runs: verify, the generated code, race, cross-builds, the corrections check and the manifest diff
+make ci        # what CI runs: verify, the generated code, race, cross-builds, the corrections check, the manifest diff and the web UI (nsl)
 ```
 
 | Target | What it runs |
@@ -22,10 +22,16 @@ make ci        # what CI runs: verify, the generated code, race, cross-builds, t
 | `make cross` | build every package for linux/amd64 and arm64, and darwin/arm64. No windows build: the daemon serves a Unix socket |
 | `make corrections-base` | compare the corrections inbox with `BASE` |
 | `make manifest-check` | compare `gen/manifest.json` with the 1 at `BASE`, so a breaking change is caught in review; it skips when `BASE` is empty, and CI sets the pull request's base commit |
+| `make web-check` | in the nsl machine: Biome, `tsc`, the Vitest tests of `web/`, and a fresh run of `web/src/gen` compared with the tree |
+| `make web-build` | in the nsl machine: the web UI into `web/dist` |
+| `make web-generate` | in the nsl machine: `web/src/gen` from the proto, with the pinned `protoc-gen-es` |
+| `make deb DEB_VERSION=X.Y.Z` | the `.deb` into `dist/`, from a built `web/dist`, then `make deb-check` |
 | `make site` | build this site into `site/dist`, in strict mode |
 
-`make ci` does not build the site: its 6 prerequisites are `verify`,
-`gen-check`, `race`, `cross`, `corrections-base` and `manifest-check`.
+`make ci` does not build the site: its 7 prerequisites are `verify`,
+`gen-check`, `race`, `cross`, `corrections-base`, `manifest-check` and
+`web-check`. Node and pnpm run only in the nsl machine; CI, whose runner has
+Node, runs the same targets with `IN_NSL='sh -c'`.
 
 ## The generated code
 

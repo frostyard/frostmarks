@@ -24,6 +24,9 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
+    env:
+      NODE_VERSION: "24.21.0"
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -41,7 +44,14 @@ jobs:
           install: true
           install_args: golangci-lint buf protoc-gen-go
           cache: true
-      - run: make ci BASE="$BASE"
+      # make ci runs the web UI's checks (make web-check), which a developer
+      # runs in the nsl machine; the runner has Node, so IN_NSL runs them here.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      # pnpm comes from corepack, pinned with its hash by web/package.json.
+      - run: corepack enable
+      - run: make ci BASE="$BASE" IN_NSL='sh -c'
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
 

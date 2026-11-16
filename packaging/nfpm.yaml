@@ -1,0 +1,27 @@
+# nFPM config for frostyard-frostmarks (frostyard/core ADR-0011, ADR-0058;
+# docs/specs/lodge-app.md). make deb stages the install tree under
+# build/deb/root and runs nfpm; the Version comes from DEB_VERSION.
+name: frostyard-frostmarks
+arch: amd64
+platform: linux
+version: ${DEB_VERSION}
+version_schema: none
+section: net
+priority: optional
+maintainer: Brian Ketelsen <bketelsen@gmail.com>
+description: |-
+  frostmarks, the bookmark manager behind lodge.
+  It keeps bookmarks and folders in SQLite with full-text search, and it
+  serves the app's API on its private socket for marksctl and its MCP
+  server, and on lodge's socket for the lodge shell.
+vendor: frostyard
+homepage: https://github.com/frostyard/frostmarks
+license: MIT
+depends:
+  - systemd
+contents:
+  - src: ./build/deb/root/usr
+    dst: /usr
+    type: tree
+deb:
+  compression: gzip

@@ -12,13 +12,21 @@ Run it with no arguments to serve the default state directory and socket.
 | --- | --- |
 | `-state-dir` | the state directory; default `$XDG_STATE_HOME/frostmarks`, else `~/.local/state/frostmarks` |
 | `-socket` | the socket path; default `$XDG_RUNTIME_DIR/frostmarks.sock`, and required when that variable is unset |
-| `-debug` | log each event at debug level |
+| `-lodge` | also serve lodge's app socket, and publish each event to lodge's broker ([Run on lodge](../guides/lodge.md)) |
+| `-debug` | log each event at debug level (without `-lodge`) |
 | `-version` | print the version and exit |
 
 The daemon creates the state directory and the SQLite store when they are
 absent, binds the socket with mode `0600` for your user, and removes the socket
 when it stops. When it is ready, it prints `frostmarksd: serving on <path>` to
 its standard error. It serves the app's API over Connect, and no port is open.
+
+With `-lodge`, it also serves the socket that systemd's `frostmarks.socket`
+passes, `/run/lodge/apps/marks.sock`, to lodge alone, and it publishes each
+event to lodge's broker, `/run/lodge/nats.sock`. `LODGE_ROOT` moves both lodge
+paths under a development root, where the daemon makes the app socket itself,
+and `LODGE_UID` names lodge's user id there. A start without the app socket, or
+without user `lodge` outside `LODGE_ROOT`, exits 1.
 
 | Code | Meaning |
 | --- | --- |
