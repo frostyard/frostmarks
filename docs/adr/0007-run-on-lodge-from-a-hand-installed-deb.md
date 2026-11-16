@@ -69,8 +69,10 @@ amd64 `.deb` with every file under `/usr`, no maintainer script and no file in
 `/etc`, and attests it with GitHub's build provenance. It ships both binaries:
 `frostmarksd`, and `marksctl` for the host's own user of the store
 (`sudo -u frostmarks marksctl -socket /run/frostmarks/private.sock`). The
-package enables nothing: the administrator runs
-`systemctl enable --now frostmarks.socket` 1 time, and lodge's first call starts
+package makes no user and enables nothing. After the install, the
+administrator runs `systemd-sysusers` (the socket unit needs user
+`frostmarks`), `systemctl daemon-reload`, `systemctl enable --now
+frostmarks.socket` and `lodgectl reload`, 1 time, and lodge's first call starts
 the service. A Go program, `internal/cmd/debcheck`, checks the built package
 in the release, so the check needs no Python and no `dpkg-deb`.
 

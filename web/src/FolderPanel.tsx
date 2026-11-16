@@ -29,19 +29,22 @@ export function FolderPanel(props: FolderPanelProps) {
   const { folders, error, current, narrow, onSelect, onRetry, onNew, onRename, onDelete, onBookmarklet } = props;
   if (narrow) {
     return (
-      <div className="flex items-center gap-1 border-separator border-b bg-toolbar px-2 py-1">
-        <PathSelect
-          label="Folder"
-          paths={folderPaths(folders)}
-          value={current}
-          onChange={onSelect}
-          rootLabel="All bookmarks"
-          compact
-        />
-        <IconButton label="New folder" icon={FolderPlus} size={24} onClick={onNew} />
-        <IconButton label="Rename folder" icon={Pencil} size={24} disabled={current === "/"} onClick={onRename} />
-        <IconButton label="Delete folder" icon={Trash2} size={24} disabled={current === "/"} onClick={onDelete} />
-        <IconButton label="Bookmarklet" icon={Bookmark} size={24} onClick={onBookmarklet} />
+      <div className="flex flex-col border-separator border-b bg-toolbar">
+        <div className="flex items-center gap-1 px-2 py-1">
+          <PathSelect
+            label="Folder"
+            paths={folderPaths(folders)}
+            value={current}
+            onChange={onSelect}
+            rootLabel="All bookmarks"
+            compact
+          />
+          <IconButton label="New folder" icon={FolderPlus} size={24} onClick={onNew} />
+          <IconButton label="Rename folder" icon={Pencil} size={24} disabled={current === "/"} onClick={onRename} />
+          <IconButton label="Delete folder" icon={Trash2} size={24} disabled={current === "/"} onClick={onDelete} />
+          <IconButton label="Bookmarklet" icon={Bookmark} size={24} onClick={onBookmarklet} />
+        </div>
+        {error === null ? null : <ErrorLine text={error} onRetry={onRetry} />}
       </div>
     );
   }

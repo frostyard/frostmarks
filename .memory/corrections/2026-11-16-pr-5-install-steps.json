@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "docs",
+  "correction": "The .deb runs no maintainer script, so every doc that gives the steps after its install gives all 4, in order: systemd-sysusers (the socket unit needs user frostmarks), systemctl daemon-reload, systemctl enable --now frostmarks.socket, lodgectl reload. The README, the spec and ADR-0007 left out the first 2.",
+  "evidence": "frostyard/frostmarks#5, cross-review (openai/gpt-6.1-sol) of head 40f7914, finding 3",
+  "promoted_to": "TestInstallSteps (internal/repocheck)"
+}

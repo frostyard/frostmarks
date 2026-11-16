@@ -63,22 +63,29 @@ export function ListView({ lodge, api, folder, query }: ListViewProps) {
   }, [lodge, route, title]);
 
   // The folders, and then again after each change.
+  const folderGeneration = useRef(0);
   const loadFolders = useCallback(async () => {
+    folderGeneration.current += 1;
+    const own = folderGeneration.current;
     try {
       const list = await api.listFolders();
-      setFolderState({ status: "ready", value: list });
+      if (own === folderGeneration.current) setFolderState({ status: "ready", value: list });
     } catch (err) {
-      setFolderState({ status: "error", text: errorText(err) });
+      if (own === folderGeneration.current) setFolderState({ status: "error", text: errorText(err) });
     }
   }, [api]);
 
-  // The bookmarks of the folder, or the matches of the query.
+  // The bookmarks of the folder, or the matches of the query. A load that a
+  // newer 1 supersedes writes nothing: its rows, and its error, are stale.
+  const bookmarkGeneration = useRef(0);
   const loadBookmarks = useCallback(async () => {
+    bookmarkGeneration.current += 1;
+    const own = bookmarkGeneration.current;
     try {
       const list = query === "" ? await api.listBookmarks(folder, false) : await api.searchBookmarks(query, folder);
-      setBookmarkState({ status: "ready", value: list });
+      if (own === bookmarkGeneration.current) setBookmarkState({ status: "ready", value: list });
     } catch (err) {
-      setBookmarkState({ status: "error", text: errorText(err) });
+      if (own === bookmarkGeneration.current) setBookmarkState({ status: "error", text: errorText(err) });
     }
   }, [api, folder, query]);
 

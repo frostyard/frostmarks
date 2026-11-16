@@ -69,8 +69,21 @@ meets lodge's rules: at most 128 tools and 1 MiB; each name matches
 | `frostmarks.socket` | `ListenStream=/run/lodge/apps/marks.sock`, `FileDescriptorName=marks`, `SocketUser=frostmarks`, `SocketGroup=lodge`, `SocketMode=0660`, `WantedBy=sockets.target` |
 | `frostmarks.service` | `Requires=` and `After=frostmarks.socket`, `User=` and `Group=frostmarks`, `SupplementaryGroups=lodge-apps`, `StateDirectory=frostmarks` (0700), `RuntimeDirectory=frostmarks` (0700), `RestrictAddressFamilies=AF_UNIX`, and `ExecStart=/usr/bin/frostmarksd -lodge -state-dir /var/lib/frostmarks -socket /run/frostmarks/private.sock` |
 
-The package enables no unit. The administrator runs
-`sudo systemctl enable --now frostmarks.socket` and `sudo lodgectl reload`.
+The package runs no maintainer script, so it makes no user and enables no
+unit. After the install, the administrator runs these steps, in this order:
+
+```sh
+sudo systemd-sysusers
+sudo systemctl daemon-reload
+sudo systemctl enable --now frostmarks.socket
+sudo lodgectl reload
+```
+
+`systemd-sysusers` makes user `frostmarks` from the package's `sysusers.d`
+entry, and the socket unit needs that user (`SocketUser=frostmarks`) before it
+starts. `daemon-reload` makes systemd read the new units. `lodgectl reload`
+makes lodge read `app.json`. `internal/repocheck` checks that each doc that
+gives these steps gives all 4, in this order.
 
 ### `frostmarksd -lodge`
 

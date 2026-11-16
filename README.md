@@ -48,11 +48,13 @@ Go puts them in the directory that `go env GOBIN` names, or in
 [Install](https://frostyard.github.io/frostmarks/getting-started/install/)
 lists the requirements and how to pin a version.
 
-On a lodge host, install the release's `frostyard-frostmarks` `.deb` instead,
-then start its socket and tell lodge:
+On a lodge host, install the release's `frostyard-frostmarks` `.deb` instead.
+It runs no install script, so make its user, start its socket and tell lodge:
 
 ```sh
 sudo apt install ./frostyard-frostmarks_<version>_amd64.deb
+sudo systemd-sysusers
+sudo systemctl daemon-reload
 sudo systemctl enable --now frostmarks.socket
 sudo lodgectl reload
 ```

@@ -2,10 +2,11 @@
 // that add, change, move and delete a bookmark.
 
 import { Code } from "@connectrpc/connect";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { App } from "./App";
+import type { Bookmark } from "./api";
 import { type FakeAPI, type FakeSeed, fakeAPI } from "./testing/fakeApi";
 import { type FakeLodge, fakeLodge } from "./testing/fakeLodge";
 
@@ -30,6 +31,45 @@ function idOf(api: FakeAPI, title: string): string {
     if (bookmark.title === title) return id;
   }
   throw new Error(`no bookmark ${title}`);
+}
+
+/** Deferred is a promise that the test settles when it chooses. */
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve(value: T): void;
+  reject(reason: unknown): void;
+}
+
+/** deferred returns a promise and the 2 functions that settle it. */
+function deferred<T>(): Deferred<T> {
+  const settle: { resolve?: (value: T) => void; reject?: (reason: unknown) => void } = {};
+  const promise = new Promise<T>((resolve, reject) => {
+    settle.resolve = resolve;
+    settle.reject = reject;
+  });
+  return {
+    promise,
+    resolve: (value) => settle.resolve?.(value),
+    reject: (reason) => settle.reject?.(reason),
+  };
+}
+
+/** narrowWindow makes the window answer as a phone does, and returns the undo. */
+function narrowWindow(): () => void {
+  const original = globalThis.matchMedia;
+  globalThis.matchMedia = (query: string): MediaQueryList => ({
+    media: query,
+    matches: true,
+    onchange: null,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    dispatchEvent: () => true,
+  });
+  return () => {
+    globalThis.matchMedia = original;
+  };
 }
 
 describe("App", () => {
@@ -202,5 +242,92 @@ describe("App", () => {
     const code = within(sheet).getByLabelText("Bookmarklet code") as HTMLTextAreaElement;
     expect(code.value).toBe(link.getAttribute("href"));
     expect(code.readOnly).toBe(true);
+  });
+
+  it("keeps the newer folder's rows when an old load answers late", async () => {
+    const user = userEvent.setup();
+    const api = fakeAPI({
+      folders: ["/work", "/reading"],
+      bookmarks: [
+        { url: "https://example.com/b", title: "Work doc", folder: "/work" },
+        { url: "https://example.com/c", title: "Reading doc", folder: "/reading" },
+      ],
+    });
+    const real = api.listBookmarks.bind(api);
+    const gates = new Map<string, Deferred<Bookmark[]>>();
+    // Each list call waits until the test settles it.
+    api.listBookmarks = async (folder) => {
+      const gate = deferred<Bookmark[]>();
+      gates.set(folder, gate);
+      return gate.promise;
+    };
+    renderApp("/?folder=%2Fwork", api);
+
+    await user.click(await screen.findByRole("button", { name: "/reading" }));
+    await act(async () => {
+      gates.get("/reading")?.resolve(await real("/reading", false));
+    });
+    expect(await screen.findByRole("link", { name: "Reading doc" })).toBeTruthy();
+
+    // The load of /work answers late: its rows must not replace /reading's.
+    await act(async () => {
+      gates.get("/work")?.resolve(await real("/work", false));
+    });
+    expect(screen.getByRole("link", { name: "Reading doc" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Work doc" })).toBeNull();
+  });
+
+  it("keeps a saved change as the baseline when the move fails", async () => {
+    const user = userEvent.setup();
+    const api = fakeAPI({
+      folders: ["/work", "/reading"],
+      bookmarks: [{ url: "https://example.com/a", title: "An article", folder: "/" }],
+    });
+    renderApp("/", api);
+    await screen.findByRole("link", { name: "An article" });
+    const id = idOf(api, "An article");
+    api.failNext("moveBookmark", Code.Unavailable, "the store is closed");
+
+    await user.click(screen.getByRole("button", { name: "Edit An article" }));
+    const sheet = await screen.findByRole("dialog", { name: "Edit bookmark" });
+    await user.type(within(sheet).getByLabelText("Tags"), "reading");
+    await user.selectOptions(within(sheet).getByLabelText("Folder"), "/reading");
+    await user.click(within(sheet).getByRole("button", { name: "Save" }));
+
+    // The update is stored, the move is not: the sheet stays, and says so.
+    const alert = await within(sheet).findByRole("alert");
+    expect(alert.textContent).toContain("The change is saved");
+    expect(alert.textContent).toContain("the move to /reading failed");
+    expect(api.bookmarks.get(id)?.tags).toEqual(["reading"]);
+    expect(api.bookmarks.get(id)?.folder).toBe("/");
+
+    // The next save removes that tag: it is computed from the saved change.
+    await user.clear(within(sheet).getByLabelText("Tags"));
+    await user.click(within(sheet).getByRole("button", { name: "Save" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    expect(api.bookmarks.get(id)?.tags).toEqual([]);
+    expect(api.bookmarks.get(id)?.folder).toBe("/reading");
+  });
+
+  it("shows a folder error and a working Retry in a narrow window", async () => {
+    const user = userEvent.setup();
+    const undo = narrowWindow();
+    try {
+      const api = fakeAPI(SEED);
+      api.failNext("listFolders", Code.Unavailable, "the folder list is closed");
+      renderApp("/", api);
+
+      expect(await screen.findByText("the folder list is closed")).toBeTruthy();
+      await user.click(screen.getByRole("button", { name: "Retry" }));
+      await waitFor(() => {
+        expect(screen.queryByRole("alert")).toBeNull();
+      });
+      const select = screen.getByLabelText("Folder") as HTMLSelectElement;
+      expect([...select.options].map((option) => option.value)).toContain("/work");
+    } finally {
+      undo();
+    }
   });
 });

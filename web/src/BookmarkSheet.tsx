@@ -37,6 +37,9 @@ export function BookmarkSheet({
   const [chosen, setChosen] = useState(initial?.folder ?? folder);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The stored bookmark is the baseline of the next save. A call that
+  // succeeds replaces it, so a failure after it keeps the change.
+  const [baseline, setBaseline] = useState<Bookmark | null>(initial);
   const savable = savableURL(url.trim());
 
   /** save stores the bookmark: a create for a new 1, an update and a move for a stored 1. */
@@ -45,12 +48,25 @@ export function BookmarkSheet({
     setError(null);
     try {
       const list = parseTags(tags);
-      if (initial === null) {
+      if (baseline === null) {
         await api.createBookmark({ url: url.trim(), title, notes, tags: list, folder: chosen });
       } else {
-        const { addTags, removeTags } = tagDifference(initial.tags, list);
-        await api.updateBookmark(initial.id, { url: url.trim(), title, notes, tags: list }, addTags, removeTags);
-        if (chosen !== initial.folder) await api.moveBookmark(initial.id, chosen);
+        const { addTags, removeTags } = tagDifference(baseline.tags, list);
+        const updated = await api.updateBookmark(
+          baseline.id,
+          { url: url.trim(), title, notes, tags: list },
+          addTags,
+          removeTags,
+        );
+        setBaseline(updated);
+        if (chosen !== baseline.folder) {
+          try {
+            setBaseline(await api.moveBookmark(baseline.id, chosen));
+          } catch (err) {
+            setError(`The change is saved, but the move to ${chosen} failed: ${errorText(err)}`);
+            return;
+          }
+        }
       }
       onSaved();
     } catch (err) {
