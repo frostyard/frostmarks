@@ -64,6 +64,7 @@ that hold every word of the query, best match first.
 
 ```sh
 marksctl update-bookmark ID -title "A better title" -add-tag later
+marksctl create-folder /reading/2026
 marksctl move-bookmark ID -folder /reading/2026
 marksctl delete-bookmark ID
 ```
@@ -75,9 +76,9 @@ marksctl delete-bookmark ID
 ## Folders
 
 ```sh
-marksctl create-folder /reading/2026
-marksctl rename-folder /reading/2026 /reading/archive
-marksctl delete-folder /reading/2026
+marksctl create-folder /reading/drafts
+marksctl rename-folder /reading/drafts /reading/archive
+marksctl delete-folder /reading/archive
 marksctl list-folders -recursive
 ```
 

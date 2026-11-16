@@ -34,7 +34,10 @@ item is a capability on a path:
 | Part | Example | Meaning |
 | --- | --- | --- |
 | capability | `marks:read`, `marks:write` | what the caller may do |
-| path | `/reading/**` | which folders the capability covers |
+| path | `/reading` | the folder and every folder below it |
+
+A path covers itself and every folder below it: `/reading` covers
+`/reading/2026`, but not `/readings`. The path `/` covers every folder.
 
 The local user's grant covers every folder with every capability, so
 `marksctl` and `marksctl mcp` reach the whole store.

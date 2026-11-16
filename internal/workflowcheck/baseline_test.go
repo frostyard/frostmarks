@@ -878,12 +878,12 @@ func readmeProblems(text string) []string {
 	}
 
 	// The required sections come first, in order, and the optional 1 may stand
-	// between them and the last 2.
+	// once between them and the last 2.
 	required := []string{"What it does", "Install", "Use"}
 	last := []string{"Develop", "Where to go next"}
-	got := slices.DeleteFunc(slices.Clone(sections), func(name string) bool { return name == "How it works" })
 	want := append(slices.Clone(required), last...)
-	if !slices.Equal(got, want) {
+	withOptional := slices.Concat(required, []string{"How it works"}, last)
+	if !slices.Equal(sections, want) && !slices.Equal(sections, withOptional) {
 		problems = append(problems, fmt.Sprintf("the sections are %q, want %q in that order, with an optional %q before %q (row B17)",
 			sections, want, "How it works", "Develop"))
 	}
@@ -1035,7 +1035,11 @@ make ci
 		{"the wrong kind", strings.Replace(valid, "readme-kind: tool", "readme-kind: org", 1), "the first line is not"},
 		{"no marker", strings.Replace(valid, "<!-- readme-kind: tool -->\n", "", 1), "the first line is not"},
 		{"no title", strings.Replace(valid, "# frostmarks\n", "", 1), "no # frostmarks title"},
-		{"no status line", strings.Replace(valid, "**Status:** pre-release.", "**Status:** it works.", 1), ""},
+		{"another status text", strings.Replace(valid, "**Status:** pre-release.", "**Status:** it works.", 1), ""},
+		{"no status line", strings.Replace(valid, "**Status:** pre-release.\n", "", 1), "no **Status:** line"},
+		{"How it works twice", withSection("How it works\n\ntext\n\n## How it works"), "the sections are"},
+		{"How it works at the end", valid + "\n## How it works\n\ntext\n", "the sections are"},
+		{"How it works before Use", strings.Replace(valid, "## Use", "## How it works\n\ntext\n\n## Use", 1), "the sections are"},
 		{"another documentation home", strings.Replace(valid, "https://frostyard.github.io/frostmarks/", "https://example.com/", 1), "does not link https://frostyard.github.io/frostmarks/"},
 		{"no documentation line", strings.Replace(valid, "**Documentation:** [frostyard.github.io/frostmarks](https://frostyard.github.io/frostmarks/)\n", "", 1), "no **Documentation:** line"},
 		{"a section out of order", strings.Replace(valid,
