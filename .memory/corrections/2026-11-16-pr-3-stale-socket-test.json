@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "internal/rpc",
+  "correction": "The stale-socket test closes its fixture listener with SetUnlinkOnClose(false) and asserts that the path stays, so the test tests the replacement of a socket that no listener holds instead of a path that is already gone.",
+  "evidence": "frostyard/frostmarks#3, cross-review (openai/gpt-6.1-sol) of head a291305, finding F7",
+  "promoted_to": "TestListen (internal/rpc)"
+}

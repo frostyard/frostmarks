@@ -1,59 +1,101 @@
-<!-- readme-kind: org -->
-# agentic-template
+<!-- readme-kind: tool -->
+# frostmarks
 
-A GitHub template for repositories that LLM agents build and maintain, for maintainers and teams who want reliable, reviewable agent work. It provides no application code; it provides portable agent instructions, a documentation structure with templates, a verify gate, and a starting point for skills.
+frostmarks is frostyard's bookmark manager: a daemon, a CLI and a stdio MCP
+server that keep your bookmarks in folders, with full-text search. It is for
+people who want their bookmarks on their own machine, and for the agents that
+read and file them.
 
-**Status:** in production. New repositories copy it from `main`; it has no versioned releases.
+**Status:** pre-release. It is an incubating repository until 2027-03-31.
 
-**Documentation:** [docs/README.md](docs/README.md)
+**Documentation:** [frostyard.github.io/frostmarks](https://frostyard.github.io/frostmarks/)
 
-## What is here
+## What it does
 
-| Path | What it is |
-| --- | --- |
-| `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.cursorrules`, `.github/copilot-instructions.md` | Canonical agent instructions and tool-facing symlinks |
-| `.agents/skills/`, `.claude/skills` | Canonical shared skills and the Claude skills symlink |
-| `docs/` | ADRs, designs, specs, plans and documentation indexes |
-| `Makefile` | The verify, check and CI gate |
-| `mise.toml`, `mise.lock` | Pinned tool versions |
-| `scripts/` | Template and corrections validation scripts |
-| `test/` | Node.js fixtures and gate tests |
-| `.memory/` | The corrections inbox: 1 file per record in `.memory/corrections/` |
-| `.github/` | Risk paths, dependabot settings, pull request guidance and workflows |
-| `LICENSE`, `SECURITY.md` | License text and private vulnerability reporting |
+- **Bookmarks in folders.** Each bookmark has a URL, a title, notes, tags and 1
+  folder; a folder path starts with `/`, such as `/reading/2026`, and a search reads
+  the title, the URL, the notes and the tags
+  ([the CLI](https://frostyard.github.io/frostmarks/reference/commands/)).
+- **A daemon on a private socket.** `frostmarksd` keeps the SQLite store and
+  serves the app's API on a Unix socket that only your user reaches
+  ([the design](docs/design/overview.md)).
+- **A CLI that scripts.** `marksctl` sends each call over that socket and prints
+  a table, or 1 JSON object with `-json`.
+- **MCP tools for agents.** `marksctl mcp` serves the same calls as MCP tools
+  over stdio, as the local user and with no token
+  ([connect an MCP client](https://frostyard.github.io/frostmarks/guides/mcp-client/)).
+- **Folders decide access.** A grant names the capabilities and the folders it
+  covers, and each stored bookmark is checked against the folder it holds
+  ([folders and permissions](https://frostyard.github.io/frostmarks/guides/folders-and-permissions/)).
+- **No lodge needed.** The daemon, the CLI and the MCP server work on their own;
+  a lodge app comes in a later phase
+  ([the roadmap](docs/plans/0001-roadmap.md)).
+
+## Install
+
+frostmarks is pre-release, so it has no tagged release yet. Install both
+commands from the module:
+
+```sh
+go install github.com/frostyard/frostmarks/cmd/frostmarksd@latest
+go install github.com/frostyard/frostmarks/cmd/marksctl@latest
+```
+
+Go puts them in the directory that `go env GOBIN` names, or in
+`$(go env GOPATH)/bin`. Keep that directory on `PATH`.
+
+[Install](https://frostyard.github.io/frostmarks/getting-started/install/)
+lists the requirements and how to pin a version.
 
 ## Use
 
-1. Click **Use this template** on GitHub, or run `gh repo create myproject --template bketelsen/agentic-template`.
-2. In `AGENTS.md`, replace the title and intro, then fill in the commented placeholder sections as the project takes shape. Put project checks behind `make verify` in the `Makefile`; CI runs the gate.
-3. Set the dates in `docs/adr/0001`, `0002` and `0003` to today; these ADRs are pre-accepted because this template implements them.
-4. Set the copyright holder and year in `LICENSE`. Keep MIT unless the project inherits GPL-3.0.
-5. Replace the repository URL and supported-versions section in `SECURITY.md` with your own values.
-6. Add a `.github/dependabot.yml` entry for each package ecosystem that the project adds: `gomod`, `npm`, `cargo`, `docker`. Give each entry 1 group with `patterns: ["*"]` and no `applies-to`, like the `github-actions` entry (core [ADR-0075](https://github.com/frostyard/core/blob/main/docs/adr/0075-batch-routine-pull-requests.md)).
-7. For a released Go project, add `.svu.yml` and a `bump` target that runs `svu next`; use the Go and golangci-lint versions of core's `frostyard-go-repo` skill.
-8. For a user-facing tool, add a `site/` documentation site (core [ADR-0070](https://github.com/frostyard/core/blob/main/docs/adr/0070-build-tool-docs-sites-with-materialx-on-github-pages.md)).
-9. Write the first real ADR, `0004`, for the first significant choice — language, framework or storage — and continue for later choices.
-10. Write `README.md` for the new project from core's [frostyard-readme skill](https://github.com/frostyard/core/blob/main/.agents/skills/frostyard-readme/SKILL.md) and [core ADR-0072](https://github.com/frostyard/core/blob/main/docs/adr/0072-write-every-readme-to-one-standard.md). Run its checker, `check-readme.mjs`, until it prints `ok`. Update [docs/design/agent-ready-repository.md](docs/design/agent-ready-repository.md) when the project changes its structure.
-11. Complete the repository admin steps for the labels, ruleset, private vulnerability reporting and risk paths in [docs/new-repository.md](docs/new-repository.md).
+Start the daemon, store a bookmark, and find it again:
 
-The full checklist is core's [repository baseline spec](https://github.com/frostyard/core/blob/main/docs/specs/repository-baseline.md).
+```sh
+frostmarksd &
+marksctl create-folder /reading
+marksctl create-bookmark -url https://example.com/ -title Example -folder /reading
+marksctl list-bookmarks -recursive
+marksctl search-bookmarks example
+```
+
+`frostmarksd` keeps its state in `$XDG_STATE_HOME/frostmarks` (else
+`~/.local/state/frostmarks`) and listens on
+`$XDG_RUNTIME_DIR/frostmarks.sock`; `-state-dir` and `-socket` change both.
+`marksctl` exits 0 on success, 1 on an error and 2 on a wrong usage.
+
+To give an MCP client the tools, add this entry to its configuration:
+
+```json
+{"mcpServers": {"frostmarks": {"command": "marksctl", "args": ["mcp"]}}}
+```
+
+[Use marksctl](https://frostyard.github.io/frostmarks/guides/marksctl/) walks
+through each command.
 
 ## How it works
 
-The template makes agents use one canonical instruction surface, category-based documentation, reusable templates and skills, two-way cross-links, live conventions and a verify gate. It keeps the mechanism in `AGENTS.md`, docs and code, so each agent sees the same repository. For the full design, read [agent-ready repository](docs/design/agent-ready-repository.md).
+1 Protobuf service, `frostyard.frostmarks.v1.Marks`, is the whole contract: the
+11 RPCs give the API, the permission checks, the MCP tools and the events, and
+the code that the plugins write from it is committed. The daemon serves the API
+over Connect on the private socket, `marksctl` is a client of it, and the
+generated MCP tools run in `marksctl mcp`. Events go to an outbox in the
+transaction of their change, so a bookmark that a subscriber sees is a bookmark
+that is stored. [The design](docs/design/overview.md) shows how the parts fit.
 
 ## Develop
 
 ```sh
-mise install
-make ci
+mise install   # the pinned tools: golangci-lint, buf, protoc-gen-go, svu
+make ci        # what CI runs: verify, the generated code, race, cross-builds, the manifest
 ```
 
-`make verify` needs only Node.js 22 or later and `make`; it uses no package manager and no third-party dependency. Clone with `core.symlinks=true` on Windows.
+[Build from source](https://frostyard.github.io/frostmarks/contributing/build/)
+explains each target.
 
 ## Where to go next
 
 - [AGENTS.md](AGENTS.md): the rules for agents and contributors.
-- [docs/README.md](docs/README.md): the index of decisions, designs, specs and plans.
+- [docs/README.md](docs/README.md): the decisions, designs, specs and plans.
 - [SECURITY.md](SECURITY.md): report a vulnerability privately.
 - [LICENSE](LICENSE): MIT.

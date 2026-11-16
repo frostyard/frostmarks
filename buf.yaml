@@ -1,0 +1,24 @@
+# The buf workspace of frostmarks (frostyard/core ADR-0023, ADR-0085). 2
+# modules: the app's own Protobuf files under proto/, and the copy of hearth's
+# options file under third_party/, which a test keeps equal to the file of the
+# hearth version that go.mod requires. Both lint at STANDARD. The app's service
+# is frostyard.frostmarks.v1.Marks, the name of the app's design, so its module
+# excepts SERVICE_SUFFIX. The app's module guards its wire format with FILE
+# breaking. No dependency is declared: the well-known types and
+# google/protobuf/descriptor.proto are built into buf, so buf.lock pins no
+# module, and no remote module is fetched.
+version: v2
+modules:
+  - path: proto
+    lint:
+      use:
+        - STANDARD
+      except:
+        - SERVICE_SUFFIX
+    breaking:
+      use:
+        - FILE
+  - path: third_party
+    lint:
+      use:
+        - STANDARD

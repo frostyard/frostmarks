@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "marks",
+  "correction": "A folder path that holds a control character, a NUL above all, is invalid_argument in the creation of a folder and in the folder of every RPC that names one: SQLite's length and substr stop at a NUL, so such a path would break the store's prefix comparisons.",
+  "evidence": "frostyard/frostmarks#3, cross-review (openai/gpt-6.1-sol) of head a291305, finding F3",
+  "promoted_to": "TestFolderControlCharacters (marks)"
+}

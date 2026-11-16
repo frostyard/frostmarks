@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "marks",
+  "correction": "The database's data source name is a URL whose path is escaped and made absolute first, so a database path that holds ?, #, % or a space opens the file at that exact path instead of another file or none.",
+  "evidence": "frostyard/frostmarks#3, cross-review (openai/gpt-6.1-sol) of head a291305, finding F5",
+  "promoted_to": "TestOpenEscapedPath (marks)"
+}

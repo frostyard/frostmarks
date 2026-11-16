@@ -1,0 +1,216 @@
+{
+  "hearth": 1,
+  "app": "marks",
+  "version": "0.1.0",
+  "capabilities": [
+    "marks:read",
+    "marks:write"
+  ],
+  "selectors": [
+    "folder"
+  ],
+  "operations": [
+    {
+      "name": "frostyard.frostmarks.v1.Marks.CreateBookmark",
+      "permission": "marks:write",
+      "effect": "write",
+      "expose": [
+        "ui",
+        "agent"
+      ],
+      "selectors": [
+        {
+          "field": "folder",
+          "selector": "folder"
+        }
+      ],
+      "tool": "create_bookmark"
+    },
+    {
+      "name": "frostyard.frostmarks.v1.Marks.CreateFolder",
+      "permission": "marks:write",
+      "effect": "write",
+      "expose": [
+        "ui",
+        "agent"
+      ],
+      "selectors": [
+        {
+          "field": "path",
+          "selector": "folder"
+        }
+      ],
+      "tool": "create_folder"
+    },
+    {
+      "name": "frostyard.frostmarks.v1.Marks.DeleteBookmark",
+      "permission": "marks:write",
+      "effect": "outward",
+      "expose": [
+        "ui",
+        "agent"
+      ],
+      "selectors": [],
+      "tool": "delete_bookmark"
+    },
+    {
+      "name": "frostyard.frostmarks.v1.Marks.DeleteFolder",
+      "permission": "marks:write",
+      "effect": "write",
+      "expose": [
+        "ui",
+        "agent"
+      ],
+      "selectors": [
+        {
+          "field": "path",
+          "selector": "folder"
+        }
+      ],
+      "tool": "delete_folder"
+    },
+    {
+      "name": "frostyard.frostmarks.v1.Marks.GetBookmark",
+      "permission": "marks:read",
+      "effect": "read",
+      "expose": [
+        "ui",
+        "agent"
+      ],
+      "selectors": [],
+      "tool": "get_bookmark"
+    },
+    {
+      "name": "frostyard.frostmarks.v1.Marks.ListBookmarks",
+      "permission": "marks:read",
+      "effect": "read",
+      "expose": [
+        "ui",
+        "agent"
+      ],
+      "selectors": [
+        {
+          "field": "folder",
+          "selector": "folder"
+        }
+      ],
+      "tool": "list_bookmarks"
+    },
+    {
+      "name": "frostyard.frostmarks.v1.Marks.ListFolders",
+      "permission": "marks:read",
+      "effect": "read",
+      "expose": [
+        "ui",
+        "agent"
+      ],
+      "selectors": [
+        {
+          "field": "folder",
+          "selector": "folder"
+        }
+      ],
+      "tool": "list_folders"
+    },
+    {
+      "name": "frostyard.frostmarks.v1.Marks.MoveBookmark",
+      "permission": "marks:write",
+      "effect": "write",
+      "expose": [
+        "ui",
+        "agent"
+      ],
+      "selectors": [
+        {
+          "field": "folder",
+          "selector": "folder"
+        }
+      ],
+      "tool": "move_bookmark"
+    },
+    {
+      "name": "frostyard.frostmarks.v1.Marks.RenameFolder",
+      "permission": "marks:write",
+      "effect": "write",
+      "expose": [
+        "ui",
+        "agent"
+      ],
+      "selectors": [
+        {
+          "field": "new_path",
+          "selector": "folder"
+        },
+        {
+          "field": "path",
+          "selector": "folder"
+        }
+      ],
+      "tool": "rename_folder"
+    },
+    {
+      "name": "frostyard.frostmarks.v1.Marks.SearchBookmarks",
+      "permission": "marks:read",
+      "effect": "read",
+      "expose": [
+        "ui",
+        "agent"
+      ],
+      "selectors": [
+        {
+          "field": "folder",
+          "selector": "folder"
+        }
+      ],
+      "tool": "search_bookmarks"
+    },
+    {
+      "name": "frostyard.frostmarks.v1.Marks.UpdateBookmark",
+      "permission": "marks:write",
+      "effect": "write",
+      "expose": [
+        "ui",
+        "agent"
+      ],
+      "selectors": [],
+      "tool": "update_bookmark"
+    }
+  ],
+  "events": [
+    {
+      "type": "org.frostyard.marks.bookmark.created",
+      "message": "frostyard.frostmarks.v1.BookmarkCreated",
+      "topic": "marks.bookmark.created.folder",
+      "selector": "folder",
+      "read_permission": "marks:read"
+    },
+    {
+      "type": "org.frostyard.marks.bookmark.deleted",
+      "message": "frostyard.frostmarks.v1.BookmarkDeleted",
+      "topic": "marks.bookmark.deleted.folder",
+      "selector": "folder",
+      "read_permission": "marks:read"
+    },
+    {
+      "type": "org.frostyard.marks.bookmark.moved_in",
+      "message": "frostyard.frostmarks.v1.BookmarkMovedIn",
+      "topic": "marks.bookmark.moved_in.folder",
+      "selector": "folder",
+      "read_permission": "marks:read"
+    },
+    {
+      "type": "org.frostyard.marks.bookmark.moved_out",
+      "message": "frostyard.frostmarks.v1.BookmarkMovedOut",
+      "topic": "marks.bookmark.moved_out.folder",
+      "selector": "folder",
+      "read_permission": "marks:read"
+    },
+    {
+      "type": "org.frostyard.marks.bookmark.updated",
+      "message": "frostyard.frostmarks.v1.BookmarkUpdated",
+      "topic": "marks.bookmark.updated.folder",
+      "selector": "folder",
+      "read_permission": "marks:read"
+    }
+  ]
+}

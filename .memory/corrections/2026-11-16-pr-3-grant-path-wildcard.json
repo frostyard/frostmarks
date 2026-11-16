@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "docs",
+  "correction": "A grant path in the docs and the site is a plain folder path, such as /reading, which covers itself and every folder below it; hearth's authz has no wildcard, so no doc writes /reading/**.",
+  "evidence": "frostyard/frostmarks#3, cross-review (openai/gpt-6.1-sol) of head a0fcd1f, finding F14",
+  "promoted_to": "TestNoWildcardGrantPaths (internal/workflowcheck)"
+}
