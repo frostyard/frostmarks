@@ -20,8 +20,8 @@ import { hostOf } from "./url";
 /** LoadState is what 1 load is doing: waiting, failed, or ready with its value. */
 type LoadState<T> = { status: "loading" } | { status: "error"; text: string } | { status: "ready"; value: T };
 
-/** SheetState is the sheet that the view shows, if any. */
-type SheetState =
+/** SheetBody is what the view shows in a sheet: the sheet itself, without its opening. */
+type SheetBody =
   | { kind: "add" }
   | { kind: "edit"; bookmark: Bookmark }
   | { kind: "deleteBookmark"; bookmark: Bookmark }
@@ -29,6 +29,9 @@ type SheetState =
   | { kind: "renameFolder" }
   | { kind: "deleteFolder" }
   | { kind: "bookmarklet" };
+
+/** SheetState is 1 shown sheet, and the id of the opening that made it. */
+type SheetState = SheetBody & { id: number };
 
 /** ListViewProps is what the list view takes: the route's folder and query. */
 export interface ListViewProps {
@@ -44,6 +47,7 @@ export function ListView({ lodge, api, folder, query }: ListViewProps) {
   const [folderState, setFolderState] = useState<LoadState<Folder[]>>({ status: "loading" });
   const [bookmarkState, setBookmarkState] = useState<LoadState<Bookmark[]>>({ status: "loading" });
   const [sheet, setSheet] = useState<SheetState | null>(null);
+  const sheetSeq = useRef(0);
   const [draft, setDraft] = useState(query);
 
   const route = listRoute(folder, query);
@@ -98,14 +102,29 @@ export function ListView({ lodge, api, folder, query }: ListViewProps) {
     void loadBookmarks();
   }, [loadBookmarks]);
 
-  /** reload reads the bookmarks and the folders again. */
+  // The newest bookmark load, so that a reload from a callback that runs late
+  // still loads the folder of the route that is current then.
+  const loadBookmarksNow = useRef(loadBookmarks);
+  useEffect(() => {
+    loadBookmarksNow.current = loadBookmarks;
+  }, [loadBookmarks]);
+
+  /** reload loads the folders, and the bookmarks of the route that is current now. */
   const reload = () => {
     void loadFolders();
-    void loadBookmarks();
+    void loadBookmarksNow.current();
   };
 
-  /** closeSheet takes the sheet away. */
-  const closeSheet = () => setSheet(null);
+  /** openSheet shows 1 sheet under a new id. */
+  const openSheet = (body: SheetBody) => {
+    sheetSeq.current += 1;
+    setSheet({ ...body, id: sheetSeq.current });
+  };
+
+  /** closeSheet takes 1 sheet away: a late save closes only the sheet that it started. */
+  const closeSheet = (id: number) => {
+    setSheet((current) => (current?.id === id ? null : current));
+  };
 
   /** selectFolder shows another folder's bookmarks. */
   const selectFolder = (path: string) => {
@@ -137,10 +156,10 @@ export function ListView({ lodge, api, folder, query }: ListViewProps) {
         narrow={narrow}
         onSelect={selectFolder}
         onRetry={reload}
-        onNew={() => setSheet({ kind: "newFolder" })}
-        onRename={() => setSheet({ kind: "renameFolder" })}
-        onDelete={() => setSheet({ kind: "deleteFolder" })}
-        onBookmarklet={() => setSheet({ kind: "bookmarklet" })}
+        onNew={() => openSheet({ kind: "newFolder" })}
+        onRename={() => openSheet({ kind: "renameFolder" })}
+        onDelete={() => openSheet({ kind: "deleteFolder" })}
+        onBookmarklet={() => openSheet({ kind: "bookmarklet" })}
       />
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="flex items-center gap-1 border-separator border-b bg-toolbar px-2 py-1">
@@ -158,7 +177,7 @@ export function ListView({ lodge, api, folder, query }: ListViewProps) {
             </button>
             {draft === "" ? null : <IconButton label="Clear search" icon={X} size={24} onClick={clearSearch} />}
           </form>
-          <IconButton label="Add bookmark" icon={Plus} onClick={() => setSheet({ kind: "add" })} />
+          <IconButton label="Add bookmark" icon={Plus} onClick={() => openSheet({ kind: "add" })} />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
           {bookmarkState.status === "loading" ? (
@@ -176,8 +195,8 @@ export function ListView({ lodge, api, folder, query }: ListViewProps) {
                   key={bookmark.id}
                   bookmark={bookmark}
                   showFolder={query !== ""}
-                  onEdit={() => setSheet({ kind: "edit", bookmark })}
-                  onDelete={() => setSheet({ kind: "deleteBookmark", bookmark })}
+                  onEdit={() => openSheet({ kind: "edit", bookmark })}
+                  onDelete={() => openSheet({ kind: "deleteBookmark", bookmark })}
                 />
               ))}
             </ul>
@@ -190,9 +209,9 @@ export function ListView({ lodge, api, folder, query }: ListViewProps) {
           folders={folders}
           initial={null}
           folder={folder}
-          onClose={closeSheet}
+          onClose={() => closeSheet(sheet.id)}
           onSaved={() => {
-            closeSheet();
+            closeSheet(sheet.id);
             reload();
           }}
         />
@@ -203,9 +222,9 @@ export function ListView({ lodge, api, folder, query }: ListViewProps) {
           folders={folders}
           initial={sheet.bookmark}
           folder={folder}
-          onClose={closeSheet}
+          onClose={() => closeSheet(sheet.id)}
           onSaved={() => {
-            closeSheet();
+            closeSheet(sheet.id);
             reload();
           }}
         />
@@ -219,7 +238,7 @@ export function ListView({ lodge, api, folder, query }: ListViewProps) {
             await api.deleteBookmark(sheet.bookmark.id);
             reload();
           }}
-          onClose={closeSheet}
+          onClose={() => closeSheet(sheet.id)}
         />
       ) : null}
       {sheet?.kind === "newFolder" ? (
@@ -233,7 +252,7 @@ export function ListView({ lodge, api, folder, query }: ListViewProps) {
             reload();
             selectFolder(path);
           }}
-          onClose={closeSheet}
+          onClose={() => closeSheet(sheet.id)}
         />
       ) : null}
       {sheet?.kind === "renameFolder" ? (
@@ -247,7 +266,7 @@ export function ListView({ lodge, api, folder, query }: ListViewProps) {
             reload();
             selectFolder(path);
           }}
-          onClose={closeSheet}
+          onClose={() => closeSheet(sheet.id)}
         />
       ) : null}
       {sheet?.kind === "deleteFolder" ? (
@@ -260,10 +279,10 @@ export function ListView({ lodge, api, folder, query }: ListViewProps) {
             reload();
             selectFolder(parentOf(folder));
           }}
-          onClose={closeSheet}
+          onClose={() => closeSheet(sheet.id)}
         />
       ) : null}
-      {sheet?.kind === "bookmarklet" ? <BookmarkletSheet onClose={closeSheet} /> : null}
+      {sheet?.kind === "bookmarklet" ? <BookmarkletSheet onClose={() => closeSheet(sheet.id)} /> : null}
     </div>
   );
 }

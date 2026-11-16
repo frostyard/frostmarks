@@ -6,7 +6,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { App } from "./App";
-import type { Bookmark } from "./api";
+import type { Bookmark, BookmarkInput } from "./api";
 import { type FakeAPI, type FakeSeed, fakeAPI } from "./testing/fakeApi";
 import { type FakeLodge, fakeLodge } from "./testing/fakeLodge";
 
@@ -275,6 +275,51 @@ describe("App", () => {
     });
     expect(screen.getByRole("link", { name: "Reading doc" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Work doc" })).toBeNull();
+  });
+
+  it("keeps the newer folder's rows when an old save answers late", async () => {
+    const user = userEvent.setup();
+    const api = fakeAPI({
+      folders: ["/work", "/reading"],
+      bookmarks: [
+        { url: "https://example.com/b", title: "Work doc", folder: "/work" },
+        { url: "https://example.com/c", title: "Reading doc", folder: "/reading" },
+      ],
+    });
+    const real = api.createBookmark.bind(api);
+    const gate = deferred<Bookmark>();
+    const box: { input: BookmarkInput | null } = { input: null };
+    // The create in /work waits until the test settles it.
+    api.createBookmark = async (input) => {
+      box.input = input;
+      return gate.promise;
+    };
+    renderApp("/?folder=%2Fwork", api);
+    await screen.findByRole("link", { name: "Work doc" });
+
+    // The save of /work stays pending, and the person cancels it.
+    await user.click(screen.getByRole("button", { name: "Add bookmark" }));
+    const first = await screen.findByRole("dialog", { name: "Add bookmark" });
+    await user.type(within(first).getByLabelText("URL"), "https://example.com/new");
+    await user.click(within(first).getByRole("button", { name: "Save" }));
+    await user.click(within(first).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    // /reading is loaded, and the person opens another sheet there.
+    await user.click(await screen.findByRole("button", { name: "/reading" }));
+    expect(await screen.findByRole("link", { name: "Reading doc" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Add bookmark" }));
+    expect(await screen.findByRole("dialog", { name: "Add bookmark" })).toBeTruthy();
+
+    // The save of /work answers: it reloads /reading, and it leaves the newer
+    // sheet open.
+    await act(async () => {
+      const input = box.input;
+      if (input !== null) gate.resolve(await real(input));
+    });
+    expect(screen.queryByRole("link", { name: "Work doc" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Reading doc" })).toBeTruthy();
+    expect(screen.queryByRole("dialog", { name: "Add bookmark" })).not.toBeNull();
   });
 
   it("keeps a saved change as the baseline when the move fails", async () => {

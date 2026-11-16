@@ -82,9 +82,10 @@ in the release, so the check needs no Python and no `dpkg-deb`.
   (`RuntimeDirectory=frostmarks`), and its store is `/var/lib/frostmarks`
   (`StateDirectory=frostmarks`). Only user `frostmarks` reaches the private
   socket.
-- A package that runs no script cannot enable a unit or reload lodge. The
-  install is 2 commands after `apt install`: enable the socket, then
-  `lodgectl reload`.
+- A package that runs no script cannot make its user, enable a unit or reload
+  lodge. The install is 4 commands after `apt install`, in this order:
+  `systemd-sysusers`, `systemctl daemon-reload`, enable the socket, then
+  `lodgectl reload` ([lodge-app.md](../specs/lodge-app.md#the-units)).
 - A broker that stays down fills the outbox. The relay logs each failed drain,
   so the journal shows it.
 - `app.json`'s `version` is the release's version, and `manifest.json`'s is the
