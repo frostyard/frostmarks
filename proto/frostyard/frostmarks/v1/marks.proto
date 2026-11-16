@@ -1,0 +1,390 @@
+// Package frostyard.frostmarks.v1 is the API of frostmarks, frostyard's
+// bookmark manager: 1 service, Marks, with hearth's options on it, so that 1
+// buf run writes the app's Connect server and client, its manifest, its
+// permission checks, its MCP tools and its event publishers.
+//
+// A bookmark is filed in 1 folder. A folder is a path: "/" is the root, and
+// every other folder is "/" followed by "/"-separated segments, in Unicode NFC,
+// with no empty, "." or ".." segment and no trailing "/". The selector "folder"
+// scopes both capabilities, marks:read and marks:write. An absent folder in a
+// request is the root.
+syntax = "proto3";
+
+package frostyard.frostmarks.v1;
+
+import "frostyard/hearth/v1/options.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/frostyard/frostmarks/gen/go/frostyard/frostmarks/v1;marksv1";
+
+// Bookmark is 1 saved URL, filed in 1 folder.
+message Bookmark {
+  // id identifies the bookmark: a UUIDv7 that the app makes.
+  string id = 1;
+  // url is the normalized URL: an http or https URL with a lower-case scheme
+  // and host, and no fragment.
+  string url = 2;
+  // title is the bookmark's title. It can be empty.
+  string title = 3;
+  // notes are free text about the bookmark. They can be empty.
+  string notes = 4;
+  // tags are the bookmark's tags: lower-case, sorted, without a repeat.
+  repeated string tags = 5;
+  // folder is the path of the folder the bookmark is filed in.
+  string folder = 6;
+  // create_time is when the bookmark was created.
+  google.protobuf.Timestamp create_time = 7;
+  // update_time is when the bookmark last changed.
+  google.protobuf.Timestamp update_time = 8;
+}
+
+// Folder is 1 folder.
+message Folder {
+  // path is the folder's path.
+  string path = 1;
+}
+
+// CreateBookmarkRequest carries the bookmark to save.
+message CreateBookmarkRequest {
+  // url is the URL to save: http or https.
+  string url = 1;
+  // title is the bookmark's title.
+  string title = 2;
+  // notes are free text about the bookmark.
+  string notes = 3;
+  // tags are the bookmark's tags. The app lower-cases them.
+  repeated string tags = 4;
+  // folder is the folder to file the bookmark in. It must exist; absent is
+  // the root.
+  string folder = 5 [(frostyard.hearth.v1.hearth_selector) = "folder"];
+}
+
+// CreateBookmarkResponse carries the saved bookmark.
+message CreateBookmarkResponse {
+  // bookmark is the saved bookmark.
+  Bookmark bookmark = 1;
+}
+
+// GetBookmarkRequest names the bookmark to read.
+message GetBookmarkRequest {
+  // id identifies the bookmark.
+  string id = 1;
+}
+
+// GetBookmarkResponse carries the bookmark.
+message GetBookmarkResponse {
+  // bookmark is the bookmark that was read.
+  Bookmark bookmark = 1;
+}
+
+// UpdateBookmarkRequest changes the fields that it sets, and keeps the others.
+message UpdateBookmarkRequest {
+  // id identifies the bookmark.
+  string id = 1;
+  // url, when set, replaces the bookmark's URL.
+  optional string url = 2;
+  // title, when set, replaces the bookmark's title.
+  optional string title = 3;
+  // notes, when set, replace the bookmark's notes.
+  optional string notes = 4;
+  // add_tags are tags to add.
+  repeated string add_tags = 5;
+  // remove_tags are tags to remove. A tag in both lists is an error.
+  repeated string remove_tags = 6;
+}
+
+// UpdateBookmarkResponse carries the changed bookmark.
+message UpdateBookmarkResponse {
+  // bookmark is the bookmark after the change.
+  Bookmark bookmark = 1;
+}
+
+// MoveBookmarkRequest names the bookmark and the folder it moves to.
+message MoveBookmarkRequest {
+  // id identifies the bookmark.
+  string id = 1;
+  // folder is the folder the bookmark moves to. It must exist; absent is the
+  // root.
+  string folder = 2 [(frostyard.hearth.v1.hearth_selector) = "folder"];
+}
+
+// MoveBookmarkResponse carries the moved bookmark.
+message MoveBookmarkResponse {
+  // bookmark is the bookmark in its new folder.
+  Bookmark bookmark = 1;
+}
+
+// DeleteBookmarkRequest names the bookmark to delete.
+message DeleteBookmarkRequest {
+  // id identifies the bookmark.
+  string id = 1;
+}
+
+// DeleteBookmarkResponse reports the deletion.
+message DeleteBookmarkResponse {}
+
+// ListBookmarksRequest names the folder to list.
+message ListBookmarksRequest {
+  // folder is the folder to list; absent is the root.
+  string folder = 1 [(frostyard.hearth.v1.hearth_selector) = "folder"];
+  // recursive also lists the bookmarks of every folder below folder.
+  bool recursive = 2;
+  // tag, when not empty, keeps only the bookmarks with this tag.
+  string tag = 3;
+}
+
+// ListBookmarksResponse carries the bookmarks.
+message ListBookmarksResponse {
+  // bookmarks are the bookmarks, by folder, then by creation time.
+  repeated Bookmark bookmarks = 1;
+}
+
+// SearchBookmarksRequest carries the words to find.
+message SearchBookmarksRequest {
+  // query is 1 or more words. A bookmark matches when each word is in its
+  // title, URL, notes or tags.
+  string query = 1;
+  // folder limits the search to this folder and every folder below it; absent
+  // is the root.
+  string folder = 2 [(frostyard.hearth.v1.hearth_selector) = "folder"];
+}
+
+// SearchBookmarksResponse carries the matches.
+message SearchBookmarksResponse {
+  // bookmarks are the matches, best first.
+  repeated Bookmark bookmarks = 1;
+}
+
+// CreateFolderRequest names the folder to make.
+message CreateFolderRequest {
+  // path is the new folder's path. Its parent must exist.
+  string path = 1 [(frostyard.hearth.v1.hearth_selector) = "folder"];
+}
+
+// CreateFolderResponse carries the new folder.
+message CreateFolderResponse {
+  // folder is the new folder.
+  Folder folder = 1;
+}
+
+// RenameFolderRequest names the folder and its new path.
+message RenameFolderRequest {
+  // path is the folder to rename. It is not the root.
+  string path = 1 [(frostyard.hearth.v1.hearth_selector) = "folder"];
+  // new_path is the folder's new path. Its parent must exist, and it must not
+  // exist or be below path.
+  string new_path = 2 [(frostyard.hearth.v1.hearth_selector) = "folder"];
+}
+
+// RenameFolderResponse carries the renamed folder.
+message RenameFolderResponse {
+  // folder is the folder at its new path.
+  Folder folder = 1;
+}
+
+// DeleteFolderRequest names the folder to delete.
+message DeleteFolderRequest {
+  // path is the folder to delete. It is not the root, and it holds no
+  // bookmark and no folder.
+  string path = 1 [(frostyard.hearth.v1.hearth_selector) = "folder"];
+}
+
+// DeleteFolderResponse reports the deletion.
+message DeleteFolderResponse {}
+
+// ListFoldersRequest names the folder whose folders to list.
+message ListFoldersRequest {
+  // folder is the parent folder; absent is the root.
+  string folder = 1 [(frostyard.hearth.v1.hearth_selector) = "folder"];
+  // recursive also lists every folder below the parent's folders.
+  bool recursive = 2;
+}
+
+// ListFoldersResponse carries the folders.
+message ListFoldersResponse {
+  // folders are the folders, sorted by path.
+  repeated Folder folders = 1;
+}
+
+// BookmarkCreated is published when a bookmark is created, on its folder.
+message BookmarkCreated {
+  option (frostyard.hearth.v1.hearth_event) = {
+    object: "bookmark"
+    verb: "created"
+    selector: "folder"
+    read_permission: "marks:read"
+  };
+}
+
+// BookmarkUpdated is published when a bookmark's URL, title, notes or tags
+// change, on its folder.
+message BookmarkUpdated {
+  option (frostyard.hearth.v1.hearth_event) = {
+    object: "bookmark"
+    verb: "updated"
+    selector: "folder"
+    read_permission: "marks:read"
+  };
+}
+
+// BookmarkDeleted is the tombstone of a deleted bookmark, on the folder it was
+// filed in.
+message BookmarkDeleted {
+  option (frostyard.hearth.v1.hearth_event) = {
+    object: "bookmark"
+    verb: "deleted"
+    selector: "folder"
+    read_permission: "marks:read"
+  };
+}
+
+// BookmarkMovedOut is published when a bookmark leaves a folder, on the folder
+// it leaves: by MoveBookmark, or by RenameFolder of a folder above it.
+message BookmarkMovedOut {
+  option (frostyard.hearth.v1.hearth_event) = {
+    object: "bookmark"
+    verb: "moved_out"
+    selector: "folder"
+    read_permission: "marks:read"
+  };
+}
+
+// BookmarkMovedIn is published when a bookmark arrives in a folder, on the
+// folder it arrives in: by MoveBookmark, or by RenameFolder of a folder above
+// it.
+message BookmarkMovedIn {
+  option (frostyard.hearth.v1.hearth_event) = {
+    object: "bookmark"
+    verb: "moved_in"
+    selector: "folder"
+    read_permission: "marks:read"
+  };
+}
+
+// Marks serves bookmarks and their folders. The name follows the app's design
+// (frostyard.frostmarks.v1.Marks), so buf.yaml excepts SERVICE_SUFFIX.
+service Marks {
+  // CreateBookmark saves 1 URL in 1 folder.
+  rpc CreateBookmark(CreateBookmarkRequest) returns (CreateBookmarkResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "marks:write"
+      effect: EFFECT_WRITE
+      expose: EXPOSE_UI
+      expose: EXPOSE_AGENT
+      agent_description: "Save 1 http or https URL as a bookmark in an existing folder, with an optional title, notes and tags. The same URL in the same folder is refused with already_exists, which names the existing bookmark's id."
+      examples: "{\"url\": \"https://example.com/article\", \"title\": \"An article\", \"tags\": [\"reading\"], \"folder\": \"/work\"}"
+    };
+  }
+  // GetBookmark reads 1 bookmark.
+  rpc GetBookmark(GetBookmarkRequest) returns (GetBookmarkResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "marks:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_UI
+      expose: EXPOSE_AGENT
+      agent_description: "Read 1 bookmark by its id."
+      examples: "{\"id\": \"019a8b6e-6a00-7000-8000-000000000001\"}"
+    };
+  }
+  // UpdateBookmark changes a bookmark's URL, title, notes or tags.
+  rpc UpdateBookmark(UpdateBookmarkRequest) returns (UpdateBookmarkResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "marks:write"
+      effect: EFFECT_WRITE
+      expose: EXPOSE_UI
+      expose: EXPOSE_AGENT
+      agent_description: "Change 1 bookmark: set its URL, title or notes, and add or remove tags. Fields that you leave out stay as they are."
+      examples: "{\"id\": \"019a8b6e-6a00-7000-8000-000000000001\", \"addTags\": [\"go\"], \"removeTags\": [\"reading\"]}"
+    };
+  }
+  // MoveBookmark files 1 bookmark in another folder.
+  rpc MoveBookmark(MoveBookmarkRequest) returns (MoveBookmarkResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "marks:write"
+      effect: EFFECT_WRITE
+      expose: EXPOSE_UI
+      expose: EXPOSE_AGENT
+      agent_description: "Move 1 bookmark to another existing folder. It needs write access to the folder it leaves and to the folder it moves to."
+      examples: "{\"id\": \"019a8b6e-6a00-7000-8000-000000000001\", \"folder\": \"/archive\"}"
+    };
+  }
+  // DeleteBookmark deletes 1 bookmark.
+  rpc DeleteBookmark(DeleteBookmarkRequest) returns (DeleteBookmarkResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "marks:write"
+      effect: EFFECT_OUTWARD
+      expose: EXPOSE_UI
+      expose: EXPOSE_AGENT
+      agent_description: "Delete 1 bookmark by its id. This cannot be undone."
+      examples: "{\"id\": \"019a8b6e-6a00-7000-8000-000000000001\"}"
+    };
+  }
+  // ListBookmarks lists the bookmarks of 1 folder.
+  rpc ListBookmarks(ListBookmarksRequest) returns (ListBookmarksResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "marks:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_UI
+      expose: EXPOSE_AGENT
+      agent_description: "List the bookmarks of 1 folder, optionally with every folder below it, and optionally only those with 1 tag. Name a folder that your access covers; absent is the root."
+      examples: "{\"folder\": \"/work\", \"recursive\": true, \"tag\": \"reading\"}"
+    };
+  }
+  // SearchBookmarks finds bookmarks by words of their title, URL, notes and
+  // tags.
+  rpc SearchBookmarks(SearchBookmarksRequest) returns (SearchBookmarksResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "marks:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_UI
+      expose: EXPOSE_AGENT
+      agent_description: "Find bookmarks whose title, URL, notes or tags hold every word of the query, in 1 folder and every folder below it. Name a folder that your access covers; absent is the root."
+      examples: "{\"query\": \"sqlite fts\", \"folder\": \"/work\"}"
+    };
+  }
+  // CreateFolder makes 1 folder.
+  rpc CreateFolder(CreateFolderRequest) returns (CreateFolderResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "marks:write"
+      effect: EFFECT_WRITE
+      expose: EXPOSE_UI
+      expose: EXPOSE_AGENT
+      agent_description: "Make 1 folder. Its parent folder must exist."
+      examples: "{\"path\": \"/work/reading\"}"
+    };
+  }
+  // RenameFolder gives 1 folder a new path, with every folder and bookmark
+  // below it.
+  rpc RenameFolder(RenameFolderRequest) returns (RenameFolderResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "marks:write"
+      effect: EFFECT_WRITE
+      expose: EXPOSE_UI
+      expose: EXPOSE_AGENT
+      agent_description: "Rename or move 1 folder, with every folder and bookmark below it. It needs write access to the old path and to the new path."
+      examples: "{\"path\": \"/work/reading\", \"newPath\": \"/reading\"}"
+    };
+  }
+  // DeleteFolder deletes 1 empty folder.
+  rpc DeleteFolder(DeleteFolderRequest) returns (DeleteFolderResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "marks:write"
+      effect: EFFECT_WRITE
+      expose: EXPOSE_UI
+      expose: EXPOSE_AGENT
+      agent_description: "Delete 1 empty folder: a folder that holds a bookmark or a folder is refused."
+      examples: "{\"path\": \"/work/reading\"}"
+    };
+  }
+  // ListFolders lists the folders below 1 folder.
+  rpc ListFolders(ListFoldersRequest) returns (ListFoldersResponse) {
+    option (frostyard.hearth.v1.hearth_rpc) = {
+      permission: "marks:read"
+      effect: EFFECT_READ
+      expose: EXPOSE_UI
+      expose: EXPOSE_AGENT
+      agent_description: "List the folders in 1 folder, optionally with every folder below them. Name a folder that your access covers; absent is the root."
+      examples: "{\"folder\": \"/work\", \"recursive\": true}"
+    };
+  }
+}

@@ -1,0 +1,58 @@
+# The generated code of frostmarks (make generate): the Go types from
+# protoc-gen-go, which mise pins; the Connect server and client from
+# protoc-gen-connect-go; and the manifest, permission checks, MCP tools and
+# event publishers from hearth's 4 plugins. protoc-gen-connect-go and hearth's
+# plugins run with `go run` of the version that go.mod's tool directives
+# require, so go.sum pins them and no plugin comes from a registry
+# (frostyard/core ADR-0085; docs/adr/0004).
+version: v2
+inputs:
+  - directory: proto
+plugins:
+  - local: protoc-gen-go
+    out: gen/go
+    opt:
+      - paths=source_relative
+  - local:
+      - go
+      - run
+      - connectrpc.com/connect/cmd/protoc-gen-connect-go
+    out: gen/go
+    opt:
+      - paths=source_relative
+      - simple
+  - local:
+      - go
+      - run
+      - github.com/frostyard/hearth/cmd/protoc-gen-hearth-authz
+    out: gen/go
+    opt:
+      - paths=source_relative
+      - app=marks
+      - version=0.1.0
+  - local:
+      - go
+      - run
+      - github.com/frostyard/hearth/cmd/protoc-gen-hearth-mcp
+    out: gen/go
+    opt:
+      - paths=source_relative
+      - app=marks
+      - version=0.1.0
+  - local:
+      - go
+      - run
+      - github.com/frostyard/hearth/cmd/protoc-gen-hearth-events
+    out: gen/go
+    opt:
+      - paths=source_relative
+      - app=marks
+      - version=0.1.0
+  - local:
+      - go
+      - run
+      - github.com/frostyard/hearth/cmd/protoc-gen-hearth-manifest
+    out: gen
+    opt:
+      - app=marks
+      - version=0.1.0

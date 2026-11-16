@@ -16,26 +16,27 @@ Docs are split by the question they answer:
 - [0001 — Record architecture decisions](adr/0001-record-architecture-decisions.md)
 - [0002 — Agent-portable instruction surface](adr/0002-agent-portable-instruction-surface.md)
 - [0003 — Verify gate, risk paths and corrections](adr/0003-verify-gate-risk-paths-and-corrections.md)
+- [0004 — Serve the API over Connect on a private socket](adr/0004-serve-the-api-over-connect-on-a-private-socket.md)
+- [0005 — Run the repository gate in Go](adr/0005-run-the-repository-gate-in-go.md)
+- [0006 — Store bookmarks in SQLite with full-text search](adr/0006-store-bookmarks-in-sqlite-with-full-text-search.md)
 
 ### Org-wide decisions
 
 - [Org-wide decisions (frostyard/core ADRs)](org-adrs.md)
 
-### Guides
-
-- [After you create a repository from this template](new-repository.md)
-
 ### Design
 
+- [frostmarks](design/overview.md)
 - [Agent-ready repository](design/agent-ready-repository.md)
 
 ### Specs
 
-*(none yet)*
+- [API](specs/api.md)
+- [CLI](specs/cli.md)
 
 ### Plans
 
-*(none yet)*
+- [0001 — Roadmap](plans/0001-roadmap.md)
 
 ## Conventions
 
