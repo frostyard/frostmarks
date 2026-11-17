@@ -641,3 +641,31 @@ func TestTooManyFolders(t *testing.T) {
 		t.Errorf("Parse of %d folders = %v, want ErrTooManyFolders", MaxFolders+1, err)
 	}
 }
+
+// TestTooDeep checks the depth limit: MaxLevels open <DL> levels pass, and 1
+// more is ErrTooDeep, with folders and with bare lists that open no folder, so
+// that the limit holds apart from the count of folders.
+func TestTooDeep(t *testing.T) {
+	tests := []struct {
+		// name names the case.
+		name string
+		// level is the text of 1 level.
+		level string
+	}{
+		{name: "folders", level: "<DT><H3>a</H3><DL><p>"},
+		{name: "bare lists", level: "<DL><p>"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			deep := func(levels int) string {
+				return "<!DOCTYPE NETSCAPE-Bookmark-file-1>" + strings.Repeat(test.level, levels)
+			}
+			if _, err := Parse(strings.NewReader(deep(MaxLevels))); err != nil {
+				t.Errorf("Parse of %d levels = %v, want no error", MaxLevels, err)
+			}
+			if _, err := Parse(strings.NewReader(deep(MaxLevels + 1))); !errors.Is(err, ErrTooDeep) {
+				t.Errorf("Parse of %d levels = %v, want ErrTooDeep", MaxLevels+1, err)
+			}
+		})
+	}
+}
