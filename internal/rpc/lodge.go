@@ -124,7 +124,8 @@ func oneLine(text string) string {
 }
 
 // ServeLodge serves h on the lodge socket's listener until ctx ends, and it
-// returns nil after a clean stop. A call in flight has 5 seconds to finish.
+// returns nil after a clean stop. A call in flight has the time that hearth's
+// connectserver.Serve gives it to finish.
 //
 // The server marks every connection that hearth's lodge listener accepted in the
 // connection's context, which the adapter requires: without the mark it refuses

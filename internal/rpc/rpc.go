@@ -83,8 +83,8 @@ func listen(path string, uid int) (net.Listener, error) {
 }
 
 // Serve serves h on the listener until ctx ends, and it returns nil after a clean
-// stop. A call in flight has 5 seconds to finish; a server error closes its
-// connections and returns the error.
+// stop. A call in flight has the time that hearth's connectserver.Serve gives it
+// to finish; a server error closes its connections and returns the error.
 func Serve(ctx context.Context, listener net.Listener, h http.Handler) error {
 	if err := connectserver.Serve(ctx, listener, h); err != nil {
 		return fmt.Errorf("serve the socket: %w", err)
