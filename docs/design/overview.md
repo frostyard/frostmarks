@@ -167,7 +167,9 @@ API.
   every 5 s in the journal (`journalctl -u frostmarks`).
 - `marksctl mcp` needs a running `frostmarksd`; it holds no database handle.
 - `marksctl import` writes through the same RPCs as the other commands, 1 call
-  for each folder and each bookmark, so each one writes its own `created` event.
+  for each folder and each bookmark. Each bookmark writes its own `created`
+  event; a folder writes none, because folders publish no events in version 1
+  ([ADR-0006](../adr/0006-store-bookmarks-in-sqlite-with-full-text-search.md)).
   It holds no transaction across the file: a failed import leaves what it wrote,
   and the next import of the file skips it.
 
