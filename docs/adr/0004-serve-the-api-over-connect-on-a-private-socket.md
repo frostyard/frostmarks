@@ -102,4 +102,5 @@ the 2 headers only there, and only after it has checked the peer's user id.
 - Shapes: [design/overview.md](../design/overview.md), [specs/api.md](../specs/api.md), [specs/cli.md](../specs/cli.md)
 - Storage and events: [ADR-0006](0006-store-bookmarks-in-sqlite-with-full-text-search.md)
 - Builds on: [ADR-0001](0001-record-architecture-decisions.md), [ADR-0005](0005-run-the-repository-gate-in-go.md)
+- Amended by: [ADR-0009](0009-serve-the-connect-route-with-hearths-connectserver.md), which takes the error table from hearth's `connectserver` and adds `deadline_exceeded`
 - hearth: [frostyard/core ADR-0085](https://github.com/frostyard/core/blob/main/docs/adr/0085-build-new-first-party-apps-on-hearth-with-lodge-as-their-hub.md), [hearth docs/specs/permissions.md](https://github.com/frostyard/hearth/blob/main/docs/specs/permissions.md), [hearth docs/specs/mcp-tools.md](https://github.com/frostyard/hearth/blob/main/docs/specs/mcp-tools.md)

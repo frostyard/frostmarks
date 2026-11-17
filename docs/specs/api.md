@@ -126,11 +126,14 @@ An absent `folder` is the root `/`.
 | `already_exists` | `the folder <path> exists` | `CreateFolder` or `RenameFolder` finds the folder |
 | `already_exists` | `the URL <url> is already bookmarked in <folder> as <id>` | the same URL is in the same folder |
 | `failed_precondition` | `the folder <path> is not empty` | `DeleteFolder` names a folder that holds a bookmark or a folder |
+| `canceled` | the error's text | the caller cancelled the call |
+| `deadline_exceeded` | the error's text | the call's deadline passed |
 | `internal` | the error's text | the app failed |
 
 hearth's runtime returns the 3 permission errors and the path error, and the
-interceptor of `internal/rpc` maps them to those codes
-([ADR-0004](../adr/0004-serve-the-api-over-connect-on-a-private-socket.md)).
+interceptor of hearth's `connectserver` maps them to those codes
+([ADR-0004](../adr/0004-serve-the-api-over-connect-on-a-private-socket.md),
+[ADR-0009](../adr/0009-serve-the-connect-route-with-hearths-connectserver.md)).
 
 ### The events
 
@@ -205,7 +208,7 @@ needs `marks:read` on its selector
 
 ## References
 
-- Rationale: [ADR-0004](../adr/0004-serve-the-api-over-connect-on-a-private-socket.md), [ADR-0006](../adr/0006-store-bookmarks-in-sqlite-with-full-text-search.md)
+- Rationale: [ADR-0004](../adr/0004-serve-the-api-over-connect-on-a-private-socket.md), [ADR-0006](../adr/0006-store-bookmarks-in-sqlite-with-full-text-search.md), [ADR-0009](../adr/0009-serve-the-connect-route-with-hearths-connectserver.md)
 - Context: [design/overview.md](../design/overview.md)
 - The CLI that calls it: [specs/cli.md](cli.md)
 - Built in: [plan 0001, phase 1](../plans/0001-roadmap.md)

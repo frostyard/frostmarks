@@ -41,7 +41,7 @@ gen/go/frostyard/frostmarks/v1 …  gen/manifest.json
 | `gen/` | the generated Go code and the manifest, committed, and never edited by hand |
 | `marks/` | the app core: `Open` (the schema and the outbox table), the rules of a URL, a tag, a folder and a text, the 7 bookmark RPCs, the 4 folder RPCs, the 4 permission hooks and the grant filter of the lists, and the app's errors |
 | `marks/authorize.go` | the app's whole permission code: the 4 hooks read the stored bookmark's folder inside the call's transaction, and the lists and the search keep only the rows that the caller's grant covers |
-| `internal/rpc/` | the Connect handler on the private socket (hearth's `lodge.PrivateHandler`, the error interceptor), the handler of lodge's app socket (`/health`, and `/connect/` through hearth's `lodge.Handler`), the socket that systemd passes, the listener's rules, and the client |
+| `internal/rpc/` | the Connect route on the private socket (hearth's `connectserver.Private`, with its error interceptor), the handler of lodge's app socket (`/health`, and `/connect/` through hearth's `connectserver.Lodge`), both servers (`connectserver.Serve`), the socket that systemd passes, the listener's rules, and the client ([ADR-0009](../adr/0009-serve-the-connect-route-with-hearths-connectserver.md)) |
 | `internal/paths/` | the default state directory and the default socket path, from the XDG variables |
 | `cmd/frostmarksd` | the daemon: 1 process that opens the database, runs the relay and serves the private socket, and with `-lodge` lodge's app socket |
 | `cmd/marksctl` | the CLI: 1 command for each RPC, `import`, and `mcp`, the stdio MCP server of the local user |
@@ -167,13 +167,15 @@ API.
   every 5 s in the journal (`journalctl -u frostmarks`).
 - `marksctl mcp` needs a running `frostmarksd`; it holds no database handle.
 - `marksctl import` writes through the same RPCs as the other commands, 1 call
-  for each folder and each bookmark, so each one writes its own `created` event.
+  for each folder and each bookmark. Each bookmark that it creates writes its
+  own `created` event; a folder writes none, because folders publish no
+  events in version 1 ([ADR-0006](../adr/0006-store-bookmarks-in-sqlite-with-full-text-search.md)).
   It holds no transaction across the file: a failed import leaves what it wrote,
   and the next import of the file skips it.
 
 ## References
 
-- Rationale: [ADR-0004](../adr/0004-serve-the-api-over-connect-on-a-private-socket.md), [ADR-0006](../adr/0006-store-bookmarks-in-sqlite-with-full-text-search.md), [ADR-0007](../adr/0007-run-on-lodge-from-a-hand-installed-deb.md), [ADR-0008](../adr/0008-build-the-web-ui-with-react-and-lodge-ui.md)
+- Rationale: [ADR-0004](../adr/0004-serve-the-api-over-connect-on-a-private-socket.md), [ADR-0006](../adr/0006-store-bookmarks-in-sqlite-with-full-text-search.md), [ADR-0007](../adr/0007-run-on-lodge-from-a-hand-installed-deb.md), [ADR-0008](../adr/0008-build-the-web-ui-with-react-and-lodge-ui.md), [ADR-0009](../adr/0009-serve-the-connect-route-with-hearths-connectserver.md)
 - Contracts: [specs/api.md](../specs/api.md), [specs/cli.md](../specs/cli.md), [specs/lodge-app.md](../specs/lodge-app.md)
 - Built in: [plan 0001, phase 1 and phase 2](../plans/0001-roadmap.md)
 - The toolkit: [frostyard/core ADR-0085](https://github.com/frostyard/core/blob/main/docs/adr/0085-build-new-first-party-apps-on-hearth-with-lodge-as-their-hub.md), [hearth](https://github.com/frostyard/hearth)
