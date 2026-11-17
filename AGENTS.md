@@ -73,7 +73,11 @@ app: `frostmarksd -lodge`, the web UI, the save page and the `.deb`.
   as Go tests: the workflows, the risk-path list, the corrections inbox, the
   Dependabot entries, the buf workspace, the permission hooks, the docs links
   and index, the private-host boundary, the import boundary and the copy of
-  hearth's options file.
+  hearth's options file. The Markdown-link, private-host and import walks of
+  `internal/repocheck` skip each direct child of `.agents/skills/` that holds
+  a `.synced-from-core` file: frostyard/core's skill sync owns it (core
+  ADR-0026), a change to it goes to core, and core's gate checks it. A marker
+  anywhere else exempts nothing.
 - `internal/cmd/corrections-base`: the check behind `make corrections-base`.
 - `buf.yaml` and `buf.gen.yaml`: 2 Protobuf modules (`proto` and
   `third_party`), and the plugins that write `gen/`.

@@ -190,7 +190,7 @@ func repoFilesOf(t *testing.T, keep func(name string) bool) []string {
 			return err
 		}
 		if d.IsDir() {
-			if skipDir(d.Name()) {
+			if skipTree(path, d.Name()) {
 				return filepath.SkipDir
 			}
 			return nil

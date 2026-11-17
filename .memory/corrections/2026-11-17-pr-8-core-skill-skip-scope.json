@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-17",
+  "scope": "internal/repocheck",
+  "correction": "The repository walks skip a .synced-from-core marker only in a direct child of .agents/skills/; a marker anywhere else, a directory marker or a symbolic link exempts nothing from the gate.",
+  "evidence": "frostyard/frostmarks#8, cross-review (openai/gpt-6.1-sol) of head 587dfe1, finding 1",
+  "promoted_to": "TestSkipTree (internal/repocheck)"
+}
