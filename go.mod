@@ -4,7 +4,7 @@ go 1.27.4
 
 require (
 	connectrpc.com/connect v1.21.1
-	github.com/frostyard/hearth v0.1.0
+	github.com/frostyard/hearth v0.2.0
 	github.com/google/uuid v1.6.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/nats-io/nats-server/v2 v2.15.3

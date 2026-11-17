@@ -1,25 +1,22 @@
-// Package rpc serves frostmarks' API over Connect on the app's private Unix
-// socket, and it gives the app's CLI and its MCP server a client of that socket.
+// Package rpc serves frostmarks' API over Connect on the app's private and lodge
+// Unix sockets, and it gives the app's CLI and its MCP server a private client.
 //
-// The socket belongs to the local user: the handler deletes every Lodge-* header
-// of a request and sets the local user as the caller (hearth's
-// lodge.PrivateHandler), so a forged header reaches no handler. The interceptor
-// turns the app's and hearth's errors into Connect codes, so that the CLI and an
-// agent read 1 code and 1 text.
+// Hearth's connectserver provides the handlers, the error mapping, the servers
+// and the Unix client. The private socket acts as the local user and ignores
+// forged Lodge-* headers. The lodge socket admits calls forwarded by lodge with
+// the principal and grant of the caller. This package owns the socket files and
+// the app's health route.
 package rpc
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"time"
 
-	"connectrpc.com/connect"
-
-	"github.com/frostyard/hearth/authz"
+	"github.com/frostyard/hearth/connectserver"
 	"github.com/frostyard/hearth/lodge"
 
 	marksv1 "github.com/frostyard/frostmarks/gen/go/frostyard/frostmarks/v1"
@@ -28,10 +25,6 @@ import (
 
 // The socket's limits and its permissions.
 const (
-	// readHeaderTimeout is how long the server waits for a request's headers.
-	readHeaderTimeout = 10 * time.Second
-	// shutdownTimeout is how long a stop waits for the calls in flight.
-	shutdownTimeout = 5 * time.Second
 	// dialTimeout is how long the test of an existing socket path waits for a
 	// connection.
 	dialTimeout = time.Second
@@ -43,10 +36,8 @@ const (
 
 // Handler returns the HTTP handler of the app's API on the private socket.
 func Handler(api marksv1.MarksAPI) http.Handler {
-	path, handler := marksv1connect.NewMarksHandler(api, connect.WithInterceptors(errorInterceptor{}))
-	mux := http.NewServeMux()
-	mux.Handle(path, handler)
-	return lodge.PrivateHandler(mux)
+	path, h := marksv1connect.NewMarksHandler(api, connectserver.HandlerOptions()...)
+	return connectserver.Private(path, h)
 }
 
 // Listen listens on the private socket at path, and it serves only the processes
@@ -91,102 +82,17 @@ func listen(path string, uid int) (net.Listener, error) {
 	return lodge.Listener(listener, uid), nil
 }
 
-// Serve serves h on the listener until ctx ends, and it returns nil then.
-//
-// A call in flight has shutdownTimeout to finish. A server that fails before
-// then returns its error.
+// Serve serves h on the listener until ctx ends, and it returns nil after a clean
+// stop. A call in flight has 5 seconds to finish; a server error closes its
+// connections and returns the error.
 func Serve(ctx context.Context, listener net.Listener, h http.Handler) error {
-	return serveServer(ctx, &http.Server{
-		Handler:           h,
-		ReadHeaderTimeout: readHeaderTimeout,
-	}, listener)
-}
-
-// serveServer serves the server on the listener until ctx ends, and it returns
-// nil then. A call in flight has shutdownTimeout to finish, and a server that
-// fails before then returns its error.
-func serveServer(ctx context.Context, server *http.Server, listener net.Listener) error {
-	failed := make(chan error, 1)
-	go func() {
-		failed <- server.Serve(listener)
-	}()
-	select {
-	case err := <-failed:
+	if err := connectserver.Serve(ctx, listener, h); err != nil {
 		return fmt.Errorf("serve the socket: %w", err)
-	case <-ctx.Done():
-		// The stop is the caller's, not the call's: shutting down needs a
-		// context of its own, after the caller's ended.
-		shutdown, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
-		defer cancel()
-		if err := server.Shutdown(shutdown); err != nil {
-			return fmt.Errorf("stop the server: %w", err)
-		}
-		return nil
 	}
+	return nil
 }
 
 // NewClient returns the API's client on the private socket.
 func NewClient(socket string) marksv1connect.MarksClient {
-	transport := &http.Transport{
-		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			var dialer net.Dialer
-			return dialer.DialContext(ctx, "unix", socket)
-		},
-	}
-	return marksv1connect.NewMarksClient(&http.Client{Transport: transport}, "http://frostmarks")
-}
-
-// errorInterceptor maps the errors of the app and of hearth to Connect codes, and
-// it keeps the app's own Connect errors as they are.
-type errorInterceptor struct{}
-
-// WrapUnary maps the error of 1 unary call.
-func (errorInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
-	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-		response, err := next(ctx, req)
-		if err == nil {
-			return response, nil
-		}
-		return nil, mapError(err)
-	}
-}
-
-// WrapStreamingClient passes 1 streaming client through: the service has no
-// streaming RPC.
-func (errorInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
-	return next
-}
-
-// WrapStreamingHandler passes 1 streaming handler through: the service has no
-// streaming RPC.
-func (errorInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
-	return next
-}
-
-// mapError returns the Connect error of 1 error of a call:
-//
-//   - the app's own *connect.Error is kept as it is;
-//   - a refused permission, hearth's *authz.DeniedError or authz.ErrNoCaller,
-//     is permission_denied with the same text;
-//   - an invalid path, hearth's *authz.PathError, is invalid_argument;
-//   - a cancelled call is canceled;
-//   - every other error is internal.
-func mapError(err error) error {
-	var connectErr *connect.Error
-	if errors.As(err, &connectErr) {
-		return err
-	}
-	var denied *authz.DeniedError
-	var pathErr *authz.PathError
-	switch {
-	case errors.As(err, &denied):
-		return connect.NewError(connect.CodePermissionDenied, errors.New(denied.Error()))
-	case errors.Is(err, authz.ErrNoCaller):
-		return connect.NewError(connect.CodePermissionDenied, errors.New(authz.ErrNoCaller.Error()))
-	case errors.As(err, &pathErr):
-		return connect.NewError(connect.CodeInvalidArgument, errors.New(pathErr.Error()))
-	case errors.Is(err, context.Canceled):
-		return connect.NewError(connect.CodeCanceled, errors.New(err.Error()))
-	}
-	return connect.NewError(connect.CodeInternal, errors.New(err.Error()))
+	return marksv1connect.NewMarksClient(connectserver.UnixClient(socket), "http://frostmarks")
 }

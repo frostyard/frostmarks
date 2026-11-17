@@ -21,6 +21,7 @@ Docs are split by the question they answer:
 - [0006 — Store bookmarks in SQLite with full-text search](adr/0006-store-bookmarks-in-sqlite-with-full-text-search.md)
 - [0007 — Run on lodge from a hand-installed .deb](adr/0007-run-on-lodge-from-a-hand-installed-deb.md)
 - [0008 — Build the web UI with React and lodge-ui](adr/0008-build-the-web-ui-with-react-and-lodge-ui.md)
+- [0009 — Serve the Connect route with hearth's connectserver](adr/0009-serve-the-connect-route-with-hearths-connectserver.md)
 
 ### Org-wide decisions
 

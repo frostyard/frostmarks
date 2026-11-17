@@ -179,9 +179,22 @@ func TestPrivateSocketIgnoresForgedHeaders(t *testing.T) {
 	}
 }
 
-// TestMapError checks the table of the interceptor: each error of the app and of
-// hearth arrives as its Connect code and its own text.
-func TestMapError(t *testing.T) {
+// failingAPI returns 1 error from ListBookmarks, without running the app's hooks.
+type failingAPI struct {
+	// MarksAPI supplies the other RPCs, which this test does not call.
+	marksv1.MarksAPI
+	// err is the error that ListBookmarks returns.
+	err error
+}
+
+// ListBookmarks returns the error under test.
+func (api failingAPI) ListBookmarks(context.Context, *marksv1.ListBookmarksRequest) (*marksv1.ListBookmarksResponse, error) {
+	return nil, api.err
+}
+
+// TestHandlerErrors checks the interceptor through the socket and NewClient:
+// each error of the app and of hearth arrives as its Connect code and text.
+func TestHandlerErrors(t *testing.T) {
 	tests := []struct {
 		// name names the case.
 		name string
@@ -208,7 +221,7 @@ func TestMapError(t *testing.T) {
 			name: "a wrapped refusal",
 			err:  fmt.Errorf("the hook: %w", &authz.DeniedError{Cap: "marks:read"}),
 			code: connect.CodePermissionDenied,
-			text: "permission denied: needs marks:read",
+			text: "the hook: permission denied: needs marks:read",
 		},
 		{
 			name: "no caller",
@@ -229,6 +242,12 @@ func TestMapError(t *testing.T) {
 			text: context.Canceled.Error(),
 		},
 		{
+			name: "a deadline",
+			err:  context.DeadlineExceeded,
+			code: connect.CodeDeadlineExceeded,
+			text: context.DeadlineExceeded.Error(),
+		},
+		{
 			name: "another error",
 			err:  errors.New("the disk is full"),
 			code: connect.CodeInternal,
@@ -237,7 +256,9 @@ func TestMapError(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := mapError(test.err)
+			socket := serve(t, failingAPI{err: test.err})
+			client := NewClient(socket)
+			_, got := client.ListBookmarks(t.Context(), &marksv1.ListBookmarksRequest{})
 			if code := connect.CodeOf(got); code != test.code {
 				t.Fatalf("the code = %s, want %s: %v", code, test.code, got)
 			}

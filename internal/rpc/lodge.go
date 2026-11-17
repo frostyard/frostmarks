@@ -17,26 +17,17 @@ import (
 	"os"
 	"strings"
 
-	"connectrpc.com/connect"
-
+	"github.com/frostyard/hearth/connectserver"
 	hearthlodge "github.com/frostyard/hearth/lodge"
 
 	marksv1 "github.com/frostyard/frostmarks/gen/go/frostyard/frostmarks/v1"
 	"github.com/frostyard/frostmarks/gen/go/frostyard/frostmarks/v1/marksv1connect"
 )
 
-// The lodge socket's paths, its caller kind and its limits.
+// The lodge socket's health path and its limits.
 const (
 	// healthPath is the app's health, which lodge polls.
 	healthPath = "/health"
-	// connectPrefix is the path of the app's Connect API: 1 RPC per path below
-	// it.
-	connectPrefix = "/connect/"
-	// principalCaller is the caller kind that the Connect path admits: lodge
-	// forwards a user's call with that user's principal and grant.
-	principalCaller = "principal"
-	// callerHeader is the header that names a request's caller kind.
-	callerHeader = "Lodge-Caller"
 	// protocolMajor is the major of the app's own API: its RPC major, which
 	// /health answers.
 	protocolMajor = 1
@@ -79,21 +70,15 @@ type healthAnswer struct {
 // health is a function, so that each poll answers with the current version of
 // the app and pings the store of the moment.
 func LodgeHandler(api marksv1.MarksAPI, health func(context.Context) Health) http.Handler {
-	path, handler := marksv1connect.NewMarksHandler(api, connect.WithInterceptors(errorInterceptor{}))
-	mux := http.NewServeMux()
-	mux.Handle(path, handler)
+	path, h := marksv1connect.NewMarksHandler(api, connectserver.HandlerOptions()...)
 	// The adapter reads Lodge-Principal and Lodge-Grant, and only after the
 	// peer check of the socket's listener marked the connection.
-	connectHandler := hearthlodge.Handler(http.StripPrefix(strings.TrimSuffix(connectPrefix, "/"), mux))
+	connectHandler := connectserver.Lodge(path, h)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == healthPath:
 			serveHealth(w, r, health)
-		case strings.HasPrefix(r.URL.Path, connectPrefix):
-			if r.Header.Get(callerHeader) != principalCaller {
-				refuse(w, "the Connect path admits the caller kind "+principalCaller+" only")
-				return
-			}
+		case strings.HasPrefix(r.URL.Path, connectserver.LodgePrefix):
 			connectHandler.ServeHTTP(w, r)
 		default:
 			refuse(w, "a path outside the app contract admits no caller")
@@ -139,18 +124,13 @@ func oneLine(text string) string {
 }
 
 // ServeLodge serves h on the lodge socket's listener until ctx ends, and it
-// returns nil then. A call in flight has shutdownTimeout to finish.
+// returns nil after a clean stop. A call in flight has 5 seconds to finish.
 //
 // The server marks every connection that hearth's lodge listener accepted in the
 // connection's context, which the adapter requires: without the mark it refuses
 // every request.
 func ServeLodge(ctx context.Context, listener net.Listener, h http.Handler) error {
-	server := &http.Server{
-		Handler:           h,
-		ConnContext:       hearthlodge.ConnContext,
-		ReadHeaderTimeout: readHeaderTimeout,
-	}
-	if err := serveServer(ctx, server, listener); err != nil {
+	if err := connectserver.Serve(ctx, listener, h); err != nil {
 		return fmt.Errorf("the lodge socket: %w", err)
 	}
 	return nil

@@ -113,8 +113,10 @@ not lodge's, before the server reads a byte.
 A refusal is `text/plain; charset=utf-8`, 1 line. The RPCs, their errors and
 their permissions are those of [api.md](api.md); the error codes are those of
 [ADR-0004](../adr/0004-serve-the-api-over-connect-on-a-private-socket.md).
-hearth's `lodge.Handler` answers 403 when `Lodge-Principal` is malformed or
-`Lodge-Grant` does not parse.
+hearth's `connectserver.Lodge` serves `/connect/`
+([ADR-0009](../adr/0009-serve-the-connect-route-with-hearths-connectserver.md)):
+it answers 403 when `Lodge-Caller` is not `principal`, and its `lodge.Handler`
+answers 403 when `Lodge-Principal` is malformed or `Lodge-Grant` does not parse.
 
 ### The events
 
@@ -187,7 +189,7 @@ origin in place of `LODGE`, as a link to drag to the browser's bookmarks.
 
 ## References
 
-- Rationale: [ADR-0007](../adr/0007-run-on-lodge-from-a-hand-installed-deb.md), [ADR-0008](../adr/0008-build-the-web-ui-with-react-and-lodge-ui.md), [ADR-0004](../adr/0004-serve-the-api-over-connect-on-a-private-socket.md)
+- Rationale: [ADR-0007](../adr/0007-run-on-lodge-from-a-hand-installed-deb.md), [ADR-0008](../adr/0008-build-the-web-ui-with-react-and-lodge-ui.md), [ADR-0004](../adr/0004-serve-the-api-over-connect-on-a-private-socket.md), [ADR-0009](../adr/0009-serve-the-connect-route-with-hearths-connectserver.md)
 - Context: [design/overview.md](../design/overview.md)
 - Related: [api.md](api.md), [cli.md](cli.md)
 - Built in: [plan 0001, phase 2](../plans/0001-roadmap.md#phase-2--the-lodge-app-and-the-pilot)

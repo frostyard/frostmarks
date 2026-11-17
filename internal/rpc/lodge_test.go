@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/frostyard/hearth/connectserver"
+
 	"github.com/frostyard/frostmarks/marks"
 
 	marksv1 "github.com/frostyard/frostmarks/gen/go/frostyard/frostmarks/v1"
@@ -93,14 +95,14 @@ func doLodge(t *testing.T, socket, method, path string, headers map[string]strin
 // kind, a principal and the grant's 2 headers.
 func createFolderCall(t *testing.T, socket, path, principal, grant string) (int, string) {
 	t.Helper()
-	headers := map[string]string{callerHeader: principalCaller}
+	headers := map[string]string{connectserver.CallerHeader: connectserver.PrincipalCaller}
 	if principal != "" {
 		headers["Lodge-Principal"] = principal
 	}
 	if grant != "" {
 		headers["Lodge-Grant"] = grantHeader(t, grant)
 	}
-	return doLodge(t, socket, http.MethodPost, connectPrefix+marksService+"CreateFolder",
+	return doLodge(t, socket, http.MethodPost, connectserver.LodgePrefix+marksService+"CreateFolder",
 		headers, `{"path":`+quoted(path)+`}`)
 }
 
@@ -240,12 +242,15 @@ func TestLodgeConnect(t *testing.T) {
 				"Lodge-Grant":     grantHeader(t, writeGrant),
 			}
 			if kind != "" {
-				headers[callerHeader] = kind
+				headers[connectserver.CallerHeader] = kind
 			}
-			status, body := doLodge(t, socket, http.MethodPost, connectPrefix+marksService+"CreateFolder",
+			status, body := doLodge(t, socket, http.MethodPost, connectserver.LodgePrefix+marksService+"CreateFolder",
 				headers, `{"path":"/work/c"}`)
 			if status != http.StatusForbidden {
 				t.Fatalf("a call with the kind %q = %d, want 403: %s", kind, status, body)
+			}
+			if want := "forbidden: the Lodge-Caller header is missing or is not principal\n"; body != want {
+				t.Errorf("a call with the kind %q = %q, want %q", kind, body, want)
 			}
 			if after := folderCount(t, app.API()); after != before {
 				t.Errorf("the store holds %d folders after the call with the kind %q, want %d", after, kind, before)
