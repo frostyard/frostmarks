@@ -34,6 +34,24 @@ func skipDir(name string) bool {
 	return false
 }
 
+// syncMarker is the file that frostyard/core's skill sync writes in each skill
+// directory it manages (core ADR-0026).
+const syncMarker = ".synced-from-core"
+
+// managedByCore reports whether dir is a directory that frostyard/core's skill
+// sync owns: it holds the sync marker. Its text is core's, and a change goes to
+// core, so no rule of this repository looks into it; core's own gate checks it.
+func managedByCore(dir string) bool {
+	info, err := os.Lstat(filepath.Join(dir, syncMarker))
+	return err == nil && info.Mode().IsRegular()
+}
+
+// skipTree reports whether a walk skips the directory at path: a directory
+// that skipDir names, or 1 that frostyard/core manages.
+func skipTree(path, name string) bool {
+	return skipDir(name) || managedByCore(path)
+}
+
 // markdownFiles lists the repository's markdown files, symbolic links
 // (CLAUDE.md and the like point at AGENTS.md) and templates excluded.
 func markdownFiles(t *testing.T) []string {
@@ -44,7 +62,7 @@ func markdownFiles(t *testing.T) []string {
 			return err
 		}
 		if d.IsDir() {
-			if skipDir(d.Name()) || d.Name() == "TEMPLATE" {
+			if skipTree(path, d.Name()) || d.Name() == "TEMPLATE" {
 				return filepath.SkipDir
 			}
 			return nil
@@ -249,6 +267,47 @@ func TestSlugMatchesGitHub(t *testing.T) {
 	} {
 		if got := slug(text); got != want {
 			t.Errorf("slug(%q) = %q, want %q", text, got, want)
+		}
+	}
+}
+
+// TestSkipTree checks which directories the repository's walks skip: the
+// named build and tool directories, and a skill directory that frostyard/core's
+// sync manages, but no directory of this repository's own.
+func TestSkipTree(t *testing.T) {
+	dir := t.TempDir()
+	mk := func(name string) string {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	synced := mk("synced")
+	if err := os.WriteFile(filepath.Join(synced, syncMarker), []byte("Managed by frostyard/core\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	own := mk("own")
+	markerDir := mk("marker-dir")
+	mk(filepath.Join("marker-dir", syncMarker))
+	linked := mk("linked")
+	if err := os.Symlink(filepath.Join(synced, syncMarker), filepath.Join(linked, syncMarker)); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, path string
+		want       bool
+	}{
+		{"a skill that core manages", synced, true},
+		{"a directory of this repository", own, false},
+		{"a marker that is a directory", markerDir, false},
+		{"a marker that is a symbolic link", linked, false},
+		{"a .git directory", mk(".git"), true},
+		{"a build directory", mk("build"), true},
+	} {
+		if got := skipTree(tc.path, filepath.Base(tc.path)); got != tc.want {
+			t.Errorf("%s: skipTree(%q) = %v, want %v", tc.name, tc.path, got, tc.want)
 		}
 	}
 }
