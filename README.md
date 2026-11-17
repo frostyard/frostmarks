@@ -79,6 +79,10 @@ marksctl search-bookmarks example
 `$XDG_RUNTIME_DIR/frostmarks.sock`; `-state-dir` and `-socket` change both.
 `marksctl` exits 0 on success, 1 on an error and 2 on a wrong usage.
 
+To bring in a browser's bookmarks, export them as HTML, then run
+`marksctl import bookmarks.html -folder /imported`; `-dry-run` shows the plan
+first ([Import your bookmarks](https://frostyard.github.io/frostmarks/guides/import/)).
+
 To give an MCP client the tools, add this entry to its configuration:
 
 ```json

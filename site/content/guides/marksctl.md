@@ -87,6 +87,16 @@ folder, and the parent must exist. `/` is the root folder, which always exists
 and is neither created nor deleted. `delete-folder` refuses a folder that holds
 bookmarks or other folders.
 
+## Import from a browser
+
+```sh
+marksctl import bookmarks.html -folder /imported
+```
+
+`import` reads the HTML export of Firefox, Chrome, Edge, Safari or Pinboard, and
+it adds the file's folders and bookmarks. See
+[Import your bookmarks](import.md).
+
 ## Read JSON in a script
 
 Pass `-json` before the command:

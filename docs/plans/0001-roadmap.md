@@ -48,6 +48,11 @@ repository as a product, or retires the work. Its exit criteria are the pilot's
 - **Built:** an attested `frostyard-frostmarks` `.deb` from a `vX.Y.Z` tag, with
   the systemd socket and service, a `sysusers.d` user `frostmarks`, and
   `StateDirectory=frostmarks` ([design/overview.md](../design/overview.md)).
+- **Built (2026-11-16):** `marksctl import`, which reads the Netscape bookmark
+  file of Firefox, Chrome, Edge, Safari and Pinboard, and adds its folders and
+  bookmarks through the existing RPCs; a second import of the file adds nothing
+  ([specs/cli.md](../specs/cli.md#the-import)). It gives the pilot real data
+  from the first day.
 - **Next:** Brian tags `v0.1.0` and installs the `.deb` on lodge's host; then
   the pilot runs its acceptance from lodge's runbook.
 - **Done when (the pilot, which is also the repository's exit criteria):**
@@ -69,7 +74,6 @@ repository as a product, or retires the work. Its exit criteria are the pilot's
 ## Later / ideas
 
 - A browser extension, as an alternative to the bookmarklet.
-- Import from other bookmark managers.
 - An arm64 `.deb`, a sysext and a Flatpak.
 
 ## Open questions

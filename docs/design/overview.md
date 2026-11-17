@@ -44,7 +44,8 @@ gen/go/frostyard/frostmarks/v1 …  gen/manifest.json
 | `internal/rpc/` | the Connect handler on the private socket (hearth's `lodge.PrivateHandler`, the error interceptor), the handler of lodge's app socket (`/health`, and `/connect/` through hearth's `lodge.Handler`), the socket that systemd passes, the listener's rules, and the client |
 | `internal/paths/` | the default state directory and the default socket path, from the XDG variables |
 | `cmd/frostmarksd` | the daemon: 1 process that opens the database, runs the relay and serves the private socket, and with `-lodge` lodge's app socket |
-| `cmd/marksctl` | the CLI: 1 command for each RPC, and `mcp`, the stdio MCP server of the local user |
+| `cmd/marksctl` | the CLI: 1 command for each RPC, `import`, and `mcp`, the stdio MCP server of the local user |
+| `internal/netscape`, `internal/importer` | the parser of a browser's Netscape bookmark file, and the import that plans and writes it through the client's RPCs ([specs/cli.md](../specs/cli.md#the-import)) |
 | `internal/catalog` | the tool catalog `tools.json` that lodge reads, from the generated tools |
 | `internal/cmd/stage`, `internal/cmd/debcheck` | the install tree under `/usr`, and the check of the built `.deb` |
 | `packaging/` | `app.json`, the systemd units, the `sysusers.d` entry and the nFPM config of `frostyard-frostmarks` |
@@ -133,7 +134,10 @@ reads each event without a timer. `internal/rpc/` tests the handler, the error
 table, the forged header and the listener. `internal/paths/` tests the 2 tables of
 the default paths. `internal/e2e/` builds `frostmarksd` and `marksctl`, serves a
 real socket in a short temporary directory, calls the 11 commands and the 11 MCP
-tools, and stops the daemon with SIGTERM; a second test runs the daemon with
+tools, and stops the daemon with SIGTERM; its import test imports a browser's
+file with `-dry-run`, then for real, then again, and the second import adds
+nothing; `internal/netscape` tests the parser on 1 fixture of each browser's
+export, and `internal/importer` tests the plan against a fake client; a second test runs the daemon with
 `-lodge` under `LODGE_ROOT`, calls it as lodge does, and reads its event from a
 test broker. `internal/rpc/` tests the app socket's paths and caller kinds, and
 the socket that systemd passes. `internal/catalog`, `internal/cmd/stage` and
@@ -162,6 +166,10 @@ API.
 - A broker that is down fills the outbox, and the relay logs each failed drain
   every 5 s in the journal (`journalctl -u frostmarks`).
 - `marksctl mcp` needs a running `frostmarksd`; it holds no database handle.
+- `marksctl import` writes through the same RPCs as the other commands, 1 call
+  for each folder and each bookmark, so each one writes its own `created` event.
+  It holds no transaction across the file: a failed import leaves what it wrote,
+  and the next import of the file skips it.
 
 ## References
 
