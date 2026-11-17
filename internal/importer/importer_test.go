@@ -33,13 +33,17 @@ type fakeClient struct {
 	bookmarkErr map[string]error
 	// folderErr gives the error of a CreateFolder call by the path, or nil.
 	folderErr map[string]error
+	// raced holds the folders that another client makes after the import's read:
+	// ListFolders does not show them, and CreateFolder makes them and answers
+	// already_exists.
+	raced map[string]bool
 	// listErr is the error of every ListFolders call of the path it names.
 	listErr map[string]error
 }
 
 // newFake returns a fake daemon that holds the given folders.
 func newFake(folders ...string) *fakeClient {
-	f := &fakeClient{folders: map[string]bool{}, bookmarkErr: map[string]error{}, folderErr: map[string]error{}, listErr: map[string]error{}}
+	f := &fakeClient{folders: map[string]bool{}, bookmarkErr: map[string]error{}, folderErr: map[string]error{}, listErr: map[string]error{}, raced: map[string]bool{}}
 	for _, folder := range folders {
 		f.folders[folder] = true
 	}
@@ -100,6 +104,10 @@ func (f *fakeClient) CreateFolder(_ context.Context, req *marksv1.CreateFolderRe
 	if err := f.folderErr[req.GetPath()]; err != nil {
 		return nil, err
 	}
+	if f.raced[req.GetPath()] {
+		f.folders[req.GetPath()] = true
+		return nil, connect.NewError(connect.CodeAlreadyExists, fmt.Errorf("the folder %s exists", req.GetPath()))
+	}
 	if !f.exists(parentOf(req.GetPath())) {
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("no folder %s", parentOf(req.GetPath())))
 	}
@@ -143,24 +151,25 @@ func (f *fakeClient) writes() []string {
 	return out
 }
 
-// link returns 1 bookmark of a document.
-func link(path []string, url, title string) netscape.Bookmark {
-	return netscape.Bookmark{Path: path, URL: url, Title: title, Notes: "n " + title, Tags: []string{"t"}}
+// link returns 1 bookmark of a document, in the folder at 1 index (-1 is the
+// target folder).
+func link(folder int, url, title string) netscape.Bookmark {
+	return netscape.Bookmark{Folder: folder, URL: url, Title: title, Notes: "n " + title, Tags: []string{"t"}}
 }
 
 // sample is a document of 2 folders, 3 bookmarks, 1 duplicate in the file and 1
 // refusal of the parser.
 func sample() *netscape.Document {
 	return &netscape.Document{
-		Folders: [][]string{{"Reading"}, {"Reading", "Later"}},
+		Folders: []netscape.Folder{{Name: "Reading", Parent: -1}, {Name: "Later", Parent: 0}},
 		Bookmarks: []netscape.Bookmark{
-			link([]string{"Reading"}, "https://example.com/a", "A"),
-			link([]string{"Reading", "Later"}, "https://example.com/b", "B"),
-			link(nil, "https://example.com/c", "C"),
-			link([]string{"Reading"}, "https://example.com/a", "A again"),
+			link(0, "https://example.com/a", "A"),
+			link(1, "https://example.com/b", "B"),
+			link(-1, "https://example.com/c", "C"),
+			link(0, "https://example.com/a", "A again"),
 		},
 		Refusals: []netscape.Refusal{
-			{Path: []string{"Reading"}, URL: "javascript:x", Title: "X", Reason: `the URL "javascript:x" must start with http:// or https://`},
+			{Folder: 0, URL: "javascript:x", Title: "X", Reason: `the URL "javascript:x" must start with http:// or https://`},
 		},
 	}
 }
@@ -258,8 +267,8 @@ func TestApply(t *testing.T) {
 func TestMissingTarget(t *testing.T) {
 	f := newFake("/a")
 	doc := &netscape.Document{
-		Folders:   [][]string{{"X"}},
-		Bookmarks: []netscape.Bookmark{link([]string{"X"}, "https://example.com/x", "X")},
+		Folders:   []netscape.Folder{{Name: "X", Parent: -1}},
+		Bookmarks: []netscape.Bookmark{link(0, "https://example.com/x", "X")},
 	}
 	dry := run(t, f, doc, "/a/b/c", true)
 	wantCalls := []string{"ListFolders /a/b/c recursive=true", "ListFolders /a/b recursive=false", "ListFolders /a recursive=false"}
@@ -315,7 +324,7 @@ func TestDuplicates(t *testing.T) {
 	}
 	doc := sample()
 	// A bookmark of the file in the root of the target, a repeat in the file.
-	doc.Bookmarks = append(doc.Bookmarks, link(nil, "https://example.com/c", "C again"))
+	doc.Bookmarks = append(doc.Bookmarks, link(-1, "https://example.com/c", "C again"))
 	result := run(t, f, doc, "/imp", true)
 	wantSkipped := []string{"A", "A again", "C again"}
 	var got []string
@@ -334,9 +343,9 @@ func TestDuplicates(t *testing.T) {
 // is a duplicate, invalid_argument is a refusal, and any other error stops.
 func TestCreateBookmarkErrors(t *testing.T) {
 	doc := &netscape.Document{Bookmarks: []netscape.Bookmark{
-		link(nil, "https://example.com/1", "One"),
-		link(nil, "https://example.com/2", "Two"),
-		link(nil, "https://example.com/3", "Three"),
+		link(-1, "https://example.com/1", "One"),
+		link(-1, "https://example.com/2", "Two"),
+		link(-1, "https://example.com/3", "Three"),
 	}}
 
 	f := newFake()
@@ -394,13 +403,29 @@ func TestCallErrors(t *testing.T) {
 		})
 	}
 
-	// already_exists of a folder is no error and no folder made.
+}
+
+// TestFolderRace checks a folder that another client made after the read: the
+// list does not show it, and CreateFolder answers already_exists. The import goes
+// on, adds the bookmarks of the folder, and counts no folder made for it.
+func TestFolderRace(t *testing.T) {
 	f := newFake("/imp")
-	f.folderErr["/imp/Reading"] = connect.NewError(connect.CodeAlreadyExists, errors.New("the folder exists"))
-	f.folders["/imp/Reading"] = true
+	f.raced["/imp/Reading"] = true
 	result := run(t, f, sample(), "/imp", false)
+	if !slices.Contains(f.calls, "CreateFolder /imp/Reading") {
+		t.Errorf("the calls = %v, want the call CreateFolder /imp/Reading", f.calls)
+	}
 	if want := []string{"/imp/Reading/Later"}; !slices.Equal(result.Folders, want) {
 		t.Errorf("the folders = %v, want %v", result.Folders, want)
+	}
+	if result.FoldersMade != 1 {
+		t.Errorf("the folders made = %d, want 1 (the raced folder is not counted)", result.FoldersMade)
+	}
+	if result.BookmarksAdded != 3 {
+		t.Errorf("the added = %+v, want the 3 bookmarks, with the 1 of the raced folder", result.Added)
+	}
+	if !slices.Contains(f.calls, "CreateBookmark /imp/Reading https://example.com/a") {
+		t.Errorf("the calls = %v, want the bookmark of the raced folder", f.calls)
 	}
 }
 
@@ -411,14 +436,14 @@ func TestRefusedFolder(t *testing.T) {
 	// 400 characters of 2 bytes are a short path, and a topic that is far too long.
 	wide := strings.Repeat("é", 400)
 	doc := &netscape.Document{
-		Folders: [][]string{{long}, {long, "Sub"}, {"Fine"}, {wide}},
+		Folders: []netscape.Folder{{Name: long, Parent: -1}, {Name: "Sub", Parent: 0}, {Name: "Fine", Parent: -1}, {Name: wide, Parent: -1}},
 		Bookmarks: []netscape.Bookmark{
-			link([]string{long}, "https://example.com/1", "One"),
-			link([]string{long, "Sub"}, "https://example.com/2", "Two"),
-			link([]string{"Fine"}, "https://example.com/3", "Three"),
-			link([]string{wide}, "https://example.com/4", "Four"),
+			link(0, "https://example.com/1", "One"),
+			link(1, "https://example.com/2", "Two"),
+			link(2, "https://example.com/3", "Three"),
+			link(3, "https://example.com/4", "Four"),
 		},
-		Refusals: []netscape.Refusal{{Path: []string{long}, URL: "javascript:x", Title: "X", Reason: "bad"}},
+		Refusals: []netscape.Refusal{{Folder: 0, URL: "javascript:x", Title: "X", Reason: "bad"}},
 	}
 	f := newFake()
 	result := run(t, f, doc, "/", false)
@@ -458,8 +483,42 @@ func TestRefusedFolder(t *testing.T) {
 			t.Errorf("the refusal of %s = %.200q", want.url, fmt.Sprintf("%+v", got))
 		}
 	}
-	if got := result.Refusals[4].Folder; got != "/"+long+"/Sub" {
-		t.Errorf("the folder of the bookmark below the refused folder = %.60q, want the path of the bookmark's own folder", got)
+	// A folder below a refused folder has no path of its own: its bookmark's
+	// refusal names the refused folder.
+	if got := result.Refusals[4].Folder; got != "/"+long {
+		t.Errorf("the folder of the bookmark below the refused folder = %.60q, want the path of the refused folder", got)
+	}
+}
+
+// TestRefusedParentManyChildren checks a parent whose name is too long, with many
+// children, each with 1 bookmark: 1 refusal of the folder, 1 refusal for each
+// bookmark with the refused folder's path, and no write.
+func TestRefusedParentManyChildren(t *testing.T) {
+	const children = 1000
+	name := strings.Repeat("a", netscape.MaxNameLen)
+	doc := &netscape.Document{Folders: []netscape.Folder{{Name: name, Parent: -1}}}
+	for i := range children {
+		doc.Folders = append(doc.Folders, netscape.Folder{Name: fmt.Sprintf("child %d", i), Parent: 0})
+		doc.Bookmarks = append(doc.Bookmarks, link(i+1, fmt.Sprintf("https://example.com/%d", i), "B"))
+	}
+	f := newFake()
+	result := run(t, f, doc, "/", false)
+	if got := f.writes(); len(got) != 0 {
+		t.Errorf("the import wrote for a refused folder: %d calls, the first %.80s", len(got), got[0])
+	}
+	if result.Refused != 1+children || result.FoldersMade != 0 || result.BookmarksAdded != 0 {
+		t.Fatalf("the counts = %d refused, %d folders, %d added; want %d, 0, 0", result.Refused, result.FoldersMade, result.BookmarksAdded, 1+children)
+	}
+	parent := "/" + name
+	if got := result.Refusals[0]; got.Folder != parent || got.URL != "" ||
+		got.Reason != fmt.Sprintf("the folder %q is %d bytes, and the limit is 1024", parent, len(parent)) {
+		t.Errorf("the refusal of the folder = %.200q", fmt.Sprintf("%+v", got))
+	}
+	wantReason := "the folder " + parent + " is refused"
+	for i, got := range result.Refusals[1:] {
+		if got.Folder != parent || got.Reason != wantReason || got.URL != fmt.Sprintf("https://example.com/%d", i) {
+			t.Fatalf("the refusal %d = %.200q", i, fmt.Sprintf("%+v", got))
+		}
 	}
 }
 
@@ -516,10 +575,10 @@ func TestTargets(t *testing.T) {
 // are 1 folder.
 func TestCanonicalFolders(t *testing.T) {
 	doc := &netscape.Document{
-		Folders: [][]string{{"\u00e9"}, {"e\u0301"}},
+		Folders: []netscape.Folder{{Name: "\u00e9", Parent: -1}, {Name: "e\u0301", Parent: -1}},
 		Bookmarks: []netscape.Bookmark{
-			link([]string{"\u00e9"}, "https://example.com/1", "One"),
-			link([]string{"e\u0301"}, "https://example.com/1", "Two"),
+			link(0, "https://example.com/1", "One"),
+			link(1, "https://example.com/1", "Two"),
 		},
 	}
 	result := run(t, newFake(), doc, "/", true)

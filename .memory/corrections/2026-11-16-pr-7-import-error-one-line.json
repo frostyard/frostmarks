@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "marksctl",
+  "correction": "An error of marksctl import is printed through oneLine, so that a file name with a newline still gives exactly 1 error line on the standard error.",
+  "evidence": "frostyard/frostmarks#7, cross-review (openai/gpt-6.1-sol) of head 7f2bca6, finding 3",
+  "promoted_to": "TestImportErrorIsOneLine (cmd/marksctl)"
+}

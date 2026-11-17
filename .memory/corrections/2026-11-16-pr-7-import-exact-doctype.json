@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "netscape",
+  "correction": "The declaration of a Netscape bookmark file is matched as a whole: <!DOCTYPE, white space, the exact name NETSCAPE-Bookmark-file-1, optional white space and >; a longer name or a declaration with no > is no bookmark file.",
+  "evidence": "frostyard/frostmarks#7, cross-review (openai/gpt-6.1-sol) of head 7f2bca6, finding 2",
+  "promoted_to": "TestDeclaration (internal/netscape)"
+}

@@ -18,6 +18,15 @@ import (
 // MaxFileSize is the largest input that Parse reads, in bytes (32 MiB).
 const MaxFileSize = 33554432
 
+// MaxNameLen is the longest folder name, in bytes. A longer name is cut at a
+// character boundary: no folder path of the API holds a name that long, so the
+// import refuses the folder, and the parser's memory stays linear in the size of
+// the file.
+const MaxNameLen = 1024
+
+// MaxFolders is the most distinct folders that a file holds.
+const MaxFolders = 65536
+
 // MaxLevels is the most <DL> levels that are open at 1 time. A folder path holds
 // at most 512 folders (1024 bytes, 2 for each folder), so a deeper file holds no
 // folder that the import can make, and the limit keeps the parser's memory
@@ -33,25 +42,38 @@ var (
 	// ErrTooDeep is the error of an input that opens more than MaxLevels <DL>
 	// levels at 1 time.
 	ErrTooDeep = errors.New("the input nests more than 1024 levels")
+	// ErrTooManyFolders is the error of an input that holds more than MaxFolders
+	// distinct folders.
+	ErrTooManyFolders = errors.New("the input holds more than 65536 folders")
 )
 
 // Document is the content of 1 Netscape bookmark file.
 type Document struct {
 	// Folders are the folders of the file, in file order and without a repeat: a
-	// parent comes before its children. Each is the list of the names of its
-	// path, below the import's target folder.
-	Folders [][]string
+	// parent comes before its children, so that Parent is always lower than the
+	// folder's own index. The folders of 1 name below 1 parent are 1 folder.
+	Folders []Folder
 	// Bookmarks are the accepted links of the file, in file order.
 	Bookmarks []Bookmark
 	// Refusals are the links that the parser refuses, in file order.
 	Refusals []Refusal
 }
 
+// Folder is 1 folder of a file: its name, and its place in the tree.
+type Folder struct {
+	// Name is the folder's name, on 1 line, with no "/", at most MaxNameLen
+	// bytes.
+	Name string
+	// Parent is the index in Document.Folders of the folder that holds this
+	// folder, or -1 for a folder directly in the target folder.
+	Parent int
+}
+
 // Bookmark is 1 accepted link of a file.
 type Bookmark struct {
-	// Path is the names of the folders that hold the link, below the target
-	// folder; it is empty for a link in the target folder.
-	Path []string
+	// Folder is the index in Document.Folders of the folder that holds the link,
+	// or -1 for a link in the target folder.
+	Folder int
 	// URL is the normalized URL: http or https, with a lower-case scheme and
 	// host and no fragment.
 	URL string
@@ -69,9 +91,9 @@ type Bookmark struct {
 
 // Refusal is 1 link that the parser refuses.
 type Refusal struct {
-	// Path is the names of the folders that hold the link, below the target
-	// folder.
-	Path []string
+	// Folder is the index in Document.Folders of the folder that holds the link,
+	// or -1 for a link in the target folder.
+	Folder int
 	// URL is the HREF as the file gives it, trimmed; it is empty for a link
 	// with no HREF.
 	URL string
@@ -87,7 +109,8 @@ type Refusal struct {
 // ErrNotNetscape for an input that does not start with the declaration
 // <!DOCTYPE NETSCAPE-Bookmark-file-1>, in any letter case, after an optional
 // byte order mark, white space and comments. It returns ErrTooDeep for an input
-// that opens more than MaxLevels <DL> levels at 1 time. Each invalid UTF-8
+// that opens more than MaxLevels <DL> levels at 1 time, and ErrTooManyFolders for
+// an input with more than MaxFolders distinct folders. Each invalid UTF-8
 // sequence of the input becomes U+FFFD.
 func Parse(r io.Reader) (*Document, error) {
 	data, err := io.ReadAll(io.LimitReader(r, MaxFileSize+1))
@@ -103,7 +126,7 @@ func Parse(r io.Reader) (*Document, error) {
 	if !ok {
 		return nil, ErrNotNetscape
 	}
-	p := &parser{src: rest, folderSeen: map[string]struct{}{}}
+	p := &parser{src: rest, folderIndex: map[folderKey]int{}}
 	if err := p.run(); err != nil {
 		return nil, err
 	}
@@ -133,15 +156,17 @@ func afterDoctype(text string) (string, bool) {
 	if !hasPrefixFold(text, start) {
 		return "", false
 	}
-	text = strings.TrimLeft(text[len(start):], " \t\r\n\f\v")
-	if !hasPrefixFold(text, doctypeName) {
+	rest := text[len(start):]
+	trimmed := strings.TrimLeft(rest, " \t\r\n\f\v")
+	// The name follows white space, and only white space and ">" follow the name.
+	if len(trimmed) == len(rest) || !hasPrefixFold(trimmed, doctypeName) {
 		return "", false
 	}
-	text = text[len(doctypeName):]
-	if end := strings.IndexByte(text, '>'); end >= 0 {
-		return text[end+1:], true
+	rest = strings.TrimLeft(trimmed[len(doctypeName):], " \t\r\n\f\v")
+	if !strings.HasPrefix(rest, ">") {
+		return "", false
 	}
-	return "", true
+	return rest[1:], true
 }
 
 // hasPrefixFold reports whether a text starts with a prefix, in any letter case.

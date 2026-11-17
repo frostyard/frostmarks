@@ -93,12 +93,27 @@ type Refusal struct {
 
 // folderPlan is the plan of 1 folder of the file.
 type folderPlan struct {
-	// path is the canonical path, or the path as the names give it for a refused
-	// folder.
+	// path is the canonical path of a folder that passes the rules, or the path
+	// of the refused folder that this folder is, or is below.
 	path string
-	// refusedBy is the path of the refused folder that this folder is, or is
-	// below; it is empty for a folder that passes the rules.
-	refusedBy string
+	// refused is true when path is the path of a refused folder.
+	refused bool
+}
+
+// plans holds the plan of each folder of a document, by index, below 1 target.
+type plans struct {
+	// target is the plan of the target folder, which -1 names.
+	target folderPlan
+	// folders are the plans of the folders of the document, in index order.
+	folders []folderPlan
+}
+
+// at returns the plan of the folder at 1 index, or of the target for -1.
+func (p *plans) at(index int) folderPlan {
+	if index < 0 || index >= len(p.folders) {
+		return p.target
+	}
+	return p.folders[index]
 }
 
 // Run plans the import of 1 document below a target folder, and, without dryRun,
@@ -144,11 +159,11 @@ func Run(ctx context.Context, client marksv1connect.MarksClient, doc *netscape.D
 	for _, path := range missing {
 		known[path] = true
 	}
-	plans := map[string]folderPlan{"": {path: canonical}}
-	for _, names := range doc.Folders {
-		plan := planFolder(canonical, names, plans, result)
-		plans[strings.Join(names, "/")] = plan
-		if plan.refusedBy != "" || known[plan.path] {
+	tree := &plans{target: folderPlan{path: canonical}, folders: make([]folderPlan, 0, len(doc.Folders))}
+	for _, folder := range doc.Folders {
+		plan := planFolder(folder, tree, result)
+		tree.folders = append(tree.folders, plan)
+		if plan.refused || known[plan.path] {
 			continue
 		}
 		known[plan.path] = true
@@ -163,21 +178,21 @@ func Run(ctx context.Context, client marksv1connect.MarksClient, doc *netscape.D
 
 	for _, refusal := range doc.Refusals {
 		result.Refusals = append(result.Refusals, Refusal{
-			Folder: planOf(canonical, refusal.Path, plans).path,
+			Folder: tree.at(refusal.Folder).path,
 			URL:    refusal.URL,
 			Title:  refusal.Title,
 			Reason: refusal.Reason,
 		})
 	}
 	for _, bookmark := range doc.Bookmarks {
-		plan := planOf(canonical, bookmark.Path, plans)
+		plan := tree.at(bookmark.Folder)
 		switch {
-		case plan.refusedBy != "":
+		case plan.refused:
 			result.Refusals = append(result.Refusals, Refusal{
 				Folder: plan.path,
 				URL:    bookmark.URL,
 				Title:  bookmark.Title,
-				Reason: fmt.Sprintf("the folder %s is refused", plan.refusedBy),
+				Reason: "the folder " + plan.path + " is refused",
 			})
 		case urls[plan.path][bookmark.URL]:
 			result.Skipped = append(result.Skipped, Skipped{Folder: plan.path, URL: bookmark.URL, Title: bookmark.Title})
@@ -210,41 +225,36 @@ func canonicalTarget(target string) (string, error) {
 	return checkFolder(target)
 }
 
-// planFolder returns the plan of 1 folder of the file. A folder that breaks a
-// folder rule adds 1 refusal to the result, with the rule's text as the reason; a
-// folder below a refused folder adds none, and its bookmarks get the refusal of
-// the folder.
-func planFolder(target string, names []string, plans map[string]folderPlan, result *Result) folderPlan {
-	if len(names) == 0 {
-		return folderPlan{path: target}
+// planFolder returns the plan of 1 folder of the file, whose parent has its plan
+// already. The path is built from the parent's path only, and its length is
+// compared with the limit before it is built, so that no path is longer than the
+// parent's path and 1 name. A folder that breaks a folder rule adds 1 refusal to
+// the result, with the rule's text as the reason; a folder below a refused folder
+// adds none and keeps the plan of the refused folder, so that its bookmarks get
+// the refusal of that folder.
+func planFolder(folder netscape.Folder, tree *plans, result *Result) folderPlan {
+	parent := tree.at(folder.Parent)
+	if parent.refused {
+		return parent
 	}
-	if parent := plans[strings.Join(names[:len(names)-1], "/")]; parent.refusedBy != "" {
-		return folderPlan{path: joinPath(target, names), refusedBy: parent.refusedBy}
+	prefix := parent.path
+	if prefix == authz.Root {
+		prefix = ""
 	}
-	raw := joinPath(target, names)
+	raw := prefix + "/" + folder.Name
+	if len(prefix)+1+len(folder.Name) > maxFolderLen {
+		// The text of the error holds the path: it is built from the parent's
+		// path and 1 name, at most about 2 KiB.
+		err := checkValue(raw)
+		result.Refusals = append(result.Refusals, Refusal{Folder: raw, Reason: err.Error()})
+		return folderPlan{path: raw, refused: true}
+	}
 	cleaned, err := checkFolder(raw)
 	if err != nil {
 		result.Refusals = append(result.Refusals, Refusal{Folder: raw, Reason: err.Error()})
-		return folderPlan{path: raw, refusedBy: raw}
+		return folderPlan{path: raw, refused: true}
 	}
 	return folderPlan{path: cleaned}
-}
-
-// planOf returns the plan of the folder that 1 list of names gives.
-func planOf(target string, names []string, plans map[string]folderPlan) folderPlan {
-	if plan, ok := plans[strings.Join(names, "/")]; ok {
-		return plan
-	}
-	return folderPlan{path: joinPath(target, names)}
-}
-
-// joinPath returns the path of the folder that a list of names gives below a
-// canonical folder.
-func joinPath(base string, names []string) string {
-	if len(names) == 0 {
-		return base
-	}
-	return strings.TrimSuffix(base, "/") + "/" + strings.Join(names, "/")
 }
 
 // parentOf returns the parent of 1 canonical folder path.

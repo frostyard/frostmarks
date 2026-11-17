@@ -129,12 +129,15 @@ same file adds nothing.
    before a call, with `the file <path> is larger than 33554432 bytes`.
 2. After an optional UTF-8 byte order mark, white space and comments, the file
    starts with the declaration `<!DOCTYPE NETSCAPE-Bookmark-file-1>`, in any
-   letter case. Any other file stops the import with `the file <path> is no
-   Netscape bookmark file`.
-3. The file opens at most 1024 `<DL>` levels at 1 time. A deeper file stops the
-   import with `the file <path> nests more than 1024 levels`: a folder path
-   holds at most 512 folders, and the limit keeps the parser's memory linear in
-   the size of the file.
+   letter case: `<!DOCTYPE`, white space, the name, optional white space and
+   `>`. Any other file, a longer name or a declaration with no `>` included,
+   stops the import with `the file <path> is no Netscape bookmark file`.
+3. The file opens at most 1024 `<DL>` levels at 1 time, and it holds at most
+   65536 distinct folders. A deeper file stops the import with `the file <path>
+   nests more than 1024 levels`, and a file with more folders with `the file
+   <path> holds more than 65536 folders`. A folder path holds at most 512
+   folders, and the 2 limits keep the memory of the parser and of the import
+   bounded by the size of the file.
 4. Each byte sequence that is not valid UTF-8 becomes U+FFFD.
 5. The parser reads tag names and attribute names in any letter case, and an
    attribute value in double quotes, in single quotes or without quotes. It
@@ -154,7 +157,10 @@ same file adds nothing.
    no bookmark is made too.
 4. A folder's name is the text of its `<H3>`: each run of white space and
    control characters becomes 1 space, the name is trimmed, and each `/`
-   becomes `-`. A name that is then empty, `.` or `..` is `Untitled`.
+   becomes `-`. A name that is then empty, `.` or `..` is `Untitled`. A name is
+   cut at a character boundary to at most 1024 bytes: a longer name is in no
+   valid folder path, and the import refuses it by rule 2 of
+   [the refusals](#the-refusals-the-duplicates-and-the-writes).
 
 #### A bookmark
 
@@ -180,7 +186,9 @@ same file adds nothing.
 2. The import refuses a folder path that breaks a folder rule of
    [api.md](api.md#a-folder), with the rule's text as the reason, before it
    makes a folder. It refuses each bookmark in or below a refused folder, with
-   the reason `the folder <path> is refused`.
+   the reason `the folder <path> is refused`, and the refused folder's path as
+   the bookmark's folder in the output. A folder below a refused folder is not
+   made, and it has no line of its own.
 3. The import reads the target's folders with `ListFolders` (`recursive`) and its
    bookmarks with `ListBookmarks` (`recursive`). A bookmark whose URL, in its
    normalized form, is already in its folder, or comes earlier in the file for
@@ -240,7 +248,9 @@ without `-dry-run`:
 The import exits 0 when it ran, with refusals or without; 1 for a file that it
 cannot read, a file that rules 1 to 3 of [the file](#the-file) refuse, an
 invalid `-folder`, or a call that stops it; and 2 for a usage error: no `FILE`,
-an extra argument or a bad flag.
+an extra argument or a bad flag. The error of an import is 1 line: each control
+character of its text, for example a newline in the file's name, is printed as
+1 space.
 
 ### The MCP client
 

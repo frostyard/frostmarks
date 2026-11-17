@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -97,6 +98,15 @@ func TestImportFileErrors(t *testing.T) {
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
+	var many strings.Builder
+	many.WriteString("<!DOCTYPE NETSCAPE-Bookmark-file-1><DL>")
+	for i := 0; i <= netscape.MaxFolders; i++ {
+		fmt.Fprintf(&many, "<DT><H3>f%d</H3><DL></DL>", i)
+	}
+	folders := filepath.Join(dir, "folders.html")
+	if err := os.WriteFile(folders, []byte(many.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	tests := []struct {
 		// name names the case.
 		name string
@@ -105,6 +115,7 @@ func TestImportFileErrors(t *testing.T) {
 		// want is the text of the error.
 		want string
 	}{
+		{name: "too many folders", path: folders, want: "the file " + folders + " holds more than 65536 folders"},
 		{name: "a missing file", path: filepath.Join(dir, "missing.html"), want: "missing.html: no such file"},
 		{name: "no Netscape file", path: plain, want: "the file " + plain + " is no Netscape bookmark file"},
 		{name: "a large file", path: large, want: "the file " + large + " is larger than 33554432 bytes"},
@@ -180,5 +191,36 @@ func TestPrintImport(t *testing.T) {
 	}
 	if !strings.HasSuffix(out.String(), "\ndry run: folders made: 1, bookmarks added: 1, skipped as duplicates: 1, refused: 2\n") {
 		t.Errorf("the dry run's output = %q, want the counts line with the prefix", out.String())
+	}
+}
+
+// TestImportErrorIsOneLine checks that a file name with a newline gives 1 line of
+// error: for a file that is no Netscape file, and for a file that is not there.
+func TestImportErrorIsOneLine(t *testing.T) {
+	dir := t.TempDir()
+	plain := filepath.Join(dir, "bad\nname.html")
+	if err := os.WriteFile(plain, []byte("<html></html>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for name, path := range map[string]string{
+		"a file that is no Netscape file": plain,
+		"a missing file":                  filepath.Join(dir, "missing\nname.html"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			args := []string{"-socket", filepath.Join(dir, "none.sock"), "import", path}
+			if code := run(args, strings.NewReader(""), &stdout, &stderr, noEnv); code != exitError {
+				t.Fatalf("run(%q) = %d, want %d (stderr %q)", args, code, exitError, stderr.String())
+			}
+			if stdout.Len() != 0 {
+				t.Errorf("the stdout = %q, want nothing", stdout.String())
+			}
+			if got := strings.Count(stderr.String(), "\n"); got != 1 || !strings.HasSuffix(stderr.String(), "\n") {
+				t.Errorf("the stderr = %q, want exactly 1 line", stderr.String())
+			}
+			if !strings.Contains(stderr.String(), "bad name.html") && !strings.Contains(stderr.String(), "missing name.html") {
+				t.Errorf("the stderr = %q, want the file name with its newline as a space", stderr.String())
+			}
+		})
 	}
 }

@@ -7,17 +7,35 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 )
 
+// folderPath returns the path of the folder at 1 index, below the target: its
+// names, joined with "/". It fails on a parent that does not come first.
+func folderPath(t *testing.T, doc *Document, index int) string {
+	t.Helper()
+	var names []string
+	for index >= 0 {
+		folder := doc.Folders[index]
+		if folder.Parent >= index {
+			t.Fatalf("the folder %d has the parent %d, which does not come before it", index, folder.Parent)
+		}
+		names = append([]string{folder.Name}, names...)
+		index = folder.Parent
+	}
+	return strings.Join(names, "/")
+}
+
 // summary returns a document as lines that a test compares: 1 line for each
 // folder, bookmark and refusal, in that order.
-func summary(doc *Document) []string {
+func summary(t *testing.T, doc *Document) []string {
+	t.Helper()
 	var lines []string
-	for _, folder := range doc.Folders {
-		lines = append(lines, "folder "+strings.Join(folder, "/"))
+	for i := range doc.Folders {
+		lines = append(lines, "folder "+folderPath(t, doc, i))
 	}
 	for _, b := range doc.Bookmarks {
 		added := "-"
@@ -25,10 +43,10 @@ func summary(doc *Document) []string {
 			added = fmt.Sprint(b.Added.Unix())
 		}
 		lines = append(lines, fmt.Sprintf("bookmark %s|%s|%s|%s|%s|%s",
-			strings.Join(b.Path, "/"), b.URL, b.Title, b.Notes, strings.Join(b.Tags, ","), added))
+			folderPath(t, doc, b.Folder), b.URL, b.Title, b.Notes, strings.Join(b.Tags, ","), added))
 	}
 	for _, r := range doc.Refusals {
-		lines = append(lines, fmt.Sprintf("refusal %s|%s|%s|%s", strings.Join(r.Path, "/"), r.URL, r.Title, r.Reason))
+		lines = append(lines, fmt.Sprintf("refusal %s|%s|%s|%s", folderPath(t, doc, r.Folder), r.URL, r.Title, r.Reason))
 	}
 	return lines
 }
@@ -130,7 +148,7 @@ func TestFixtures(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Parse: %v", err)
 			}
-			if got := summary(doc); !reflect.DeepEqual(got, test.want) {
+			if got := summary(t, doc); !reflect.DeepEqual(got, test.want) {
 				t.Errorf("the summary differs\n got: %q\nwant: %q", got, test.want)
 			}
 		})
@@ -173,6 +191,12 @@ func TestDeclaration(t *testing.T) {
 		{name: "the declaration", input: "<!DOCTYPE NETSCAPE-Bookmark-file-1>\n<DL></DL>", want: nil},
 		{name: "lower case", input: "<!doctype netscape-bookmark-file-1>", want: nil},
 		{name: "a byte order mark and a comment", input: "\uFEFF\n<!-- a comment -->\n  <!DOCTYPE NETSCAPE-Bookmark-file-1>", want: nil},
+		{name: "spaces before the end", input: "<!doctype netscape-bookmark-file-1  >", want: nil},
+		{name: "a longer name", input: "<!DOCTYPE NETSCAPE-Bookmark-file-10>", want: ErrNotNetscape},
+		{name: "text after the name", input: "<!DOCTYPE NETSCAPE-Bookmark-file-1 extra>", want: ErrNotNetscape},
+		{name: "no end of the declaration", input: "<!DOCTYPE NETSCAPE-Bookmark-file-1", want: ErrNotNetscape},
+		{name: "no end after white space", input: "<!DOCTYPE NETSCAPE-Bookmark-file-1 \n", want: ErrNotNetscape},
+		{name: "no white space before the name", input: "<!DOCTYPENETSCAPE-Bookmark-file-1>", want: ErrNotNetscape},
 		{name: "no declaration", input: "<html><body>a page</body></html>", want: ErrNotNetscape},
 		{name: "another declaration", input: "<!DOCTYPE html>", want: ErrNotNetscape},
 		{name: "an empty input", input: "", want: ErrNotNetscape},
@@ -387,7 +411,7 @@ func TestTree(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := summary(parseString(t, head+test.body))
+			got := summary(t, parseString(t, head+test.body))
 			if !reflect.DeepEqual(got, test.want) {
 				t.Errorf("the summary differs\n got: %q\nwant: %q", got, test.want)
 			}
@@ -530,31 +554,90 @@ func TestAddDate(t *testing.T) {
 	}
 }
 
-// TestPathsDoNotAlias checks that the folders of 2 bookmarks do not share the
-// memory of their paths.
-func TestPathsDoNotAlias(t *testing.T) {
-	doc := parseString(t, `<!DOCTYPE NETSCAPE-Bookmark-file-1><DL><DT><H3>A</H3><DL><DT><A HREF="https://example.com/1">1</A></DL><DT><H3>B</H3><DL><DT><A HREF="https://example.com/2">2</A></DL></DL>`)
-	if len(doc.Bookmarks) != 2 {
-		t.Fatalf("the document has %d bookmarks, want 2", len(doc.Bookmarks))
+// TestFolderTree checks the folders as a tree of indices: a folder's name and the
+// index of its parent, -1 for the target folder, and the index of the folder of
+// each link.
+func TestFolderTree(t *testing.T) {
+	doc := parseString(t, `<!DOCTYPE NETSCAPE-Bookmark-file-1><DL>
+<DT><A HREF="https://example.com/top">Top</A>
+<DT><H3>A</H3><DL><DT><A HREF="https://example.com/1">1</A>
+<DT><H3>B</H3><DL><DT><A HREF="https://example.com/2">2</A></DL></DL>
+<DT><H3>B</H3><DL><DT><A HREF="https://example.com/3">3</A>
+<DT><A HREF="javascript:x">X</A></DL>
+<DT><H3>A</H3><DL><DT><A HREF="https://example.com/4">4</A></DL></DL>`)
+	wantFolders := []Folder{{Name: "A", Parent: -1}, {Name: "B", Parent: 0}, {Name: "B", Parent: -1}}
+	if !reflect.DeepEqual(doc.Folders, wantFolders) {
+		t.Errorf("the folders = %+v, want %+v", doc.Folders, wantFolders)
 	}
-	if got := doc.Bookmarks[0].Path; !reflect.DeepEqual(got, []string{"A"}) {
-		t.Errorf("the path of the first bookmark = %q, want [A]", got)
+	var got []int
+	for _, b := range doc.Bookmarks {
+		got = append(got, b.Folder)
 	}
-	if got := doc.Bookmarks[1].Path; !reflect.DeepEqual(got, []string{"B"}) {
-		t.Errorf("the path of the second bookmark = %q, want [B]", got)
+	if want := []int{-1, 0, 1, 2, 0}; !slices.Equal(got, want) {
+		t.Errorf("the folders of the bookmarks = %v, want %v", got, want)
+	}
+	if len(doc.Refusals) != 1 || doc.Refusals[0].Folder != 2 {
+		t.Errorf("the refusals = %+v, want 1 in the folder 2", doc.Refusals)
 	}
 }
 
-// TestTooDeep checks the depth limit: MaxLevels open <DL> levels pass, and 1
-// more is ErrTooDeep, so that the parser's memory stays linear in the input.
-func TestTooDeep(t *testing.T) {
-	deep := func(levels int) string {
-		return "<!DOCTYPE NETSCAPE-Bookmark-file-1>" + strings.Repeat("<DT><H3>a</H3><DL><p>", levels)
+// TestLongNames checks that a folder name is cut at MaxNameLen bytes at a
+// character boundary, whatever the number of its children, and that each parent
+// index is right.
+func TestLongNames(t *testing.T) {
+	const children = 2000
+	var in strings.Builder
+	in.WriteString("<!DOCTYPE NETSCAPE-Bookmark-file-1><DL><DT><H3>")
+	// 1100 bytes of 2-byte characters, so that the cut lands on a boundary.
+	in.WriteString(strings.Repeat("é", 550))
+	in.WriteString("</H3><DL>")
+	for i := range children {
+		fmt.Fprintf(&in, "<DT><H3>child %d</H3><DL><DT><A HREF=\"https://example.com/%d\">x</A></DL>", i, i)
 	}
-	if _, err := Parse(strings.NewReader(deep(MaxLevels))); err != nil {
-		t.Errorf("Parse of %d levels = %v, want no error", MaxLevels, err)
+	in.WriteString("</DL></DL>")
+	doc := parseString(t, in.String())
+	if len(doc.Folders) != children+1 {
+		t.Fatalf("the document has %d folders, want %d", len(doc.Folders), children+1)
 	}
-	if _, err := Parse(strings.NewReader(deep(MaxLevels + 1))); !errors.Is(err, ErrTooDeep) {
-		t.Errorf("Parse of %d levels = %v, want ErrTooDeep", MaxLevels+1, err)
+	if got, want := doc.Folders[0], (Folder{Name: strings.Repeat("é", 512), Parent: -1}); got != want {
+		t.Errorf("the parent folder has a name of %d bytes, want %d bytes (cut at a boundary)", len(got.Name), len(want.Name))
+	}
+	for i, folder := range doc.Folders {
+		if len(folder.Name) > MaxNameLen {
+			t.Errorf("the folder %d has a name of %d bytes, want at most %d", i, len(folder.Name), MaxNameLen)
+		}
+		if i > 0 && folder.Parent != 0 {
+			t.Errorf("the folder %d has the parent %d, want 0", i, folder.Parent)
+		}
+	}
+	for i, b := range doc.Bookmarks {
+		if b.Folder != i+1 {
+			t.Errorf("the bookmark %d is in the folder %d, want %d", i, b.Folder, i+1)
+		}
+	}
+}
+
+// TestTooManyFolders checks the limit of distinct folders: MaxFolders pass, and 1
+// more is ErrTooManyFolders. A repeat of a folder is no new folder.
+func TestTooManyFolders(t *testing.T) {
+	many := func(folders int) string {
+		var in strings.Builder
+		in.WriteString("<!DOCTYPE NETSCAPE-Bookmark-file-1><DL>")
+		for i := range folders {
+			fmt.Fprintf(&in, "<DT><H3>f%d</H3><DL></DL>", i)
+		}
+		// Repeats of the first folder.
+		in.WriteString("<DT><H3>f0</H3><DL></DL></DL>")
+		return in.String()
+	}
+	doc, err := Parse(strings.NewReader(many(MaxFolders)))
+	if err != nil {
+		t.Fatalf("Parse of %d folders = %v, want no error", MaxFolders, err)
+	}
+	if len(doc.Folders) != MaxFolders {
+		t.Errorf("the document has %d folders, want %d", len(doc.Folders), MaxFolders)
+	}
+	if _, err := Parse(strings.NewReader(many(MaxFolders + 1))); !errors.Is(err, ErrTooManyFolders) {
+		t.Errorf("Parse of %d folders = %v, want ErrTooManyFolders", MaxFolders+1, err)
 	}
 }

@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "importer",
+  "correction": "A parsed bookmark file keeps its folders as a tree of parent indices with names cut to 1024 bytes and at most 65536 folders, and the import builds each folder path only from its parent's path after a length check, so that a long folder name with many children cannot make memory grow beyond the size of the file.",
+  "evidence": "frostyard/frostmarks#7, cross-review (openai/gpt-6.1-sol) of head 7f2bca6, finding 1",
+  "promoted_to": "TestLongNames, TestTooManyFolders (internal/netscape); TestRefusedParentManyChildren (internal/importer)"
+}

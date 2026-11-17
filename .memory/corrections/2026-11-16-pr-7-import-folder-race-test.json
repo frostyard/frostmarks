@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "importer",
+  "correction": "The test of a CreateFolder that answers already_exists must hide the folder from ListFolders, so that the importer calls CreateFolder and the test fails when that answer stops the import.",
+  "evidence": "frostyard/frostmarks#7, cross-review (openai/gpt-6.1-sol) of head 7f2bca6, finding 4",
+  "promoted_to": "TestFolderRace (internal/importer)"
+}

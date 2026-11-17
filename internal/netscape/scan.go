@@ -13,16 +13,17 @@ type parser struct {
 	pos int
 	// doc is the document that the parser builds.
 	doc Document
-	// levels holds the folder path of each open <DL>, outermost first: a <DL>
-	// that opens no folder holds the path of the level around it.
-	levels [][]string
+	// levels holds the folder index of each open <DL>, outermost first: a <DL>
+	// that opens no folder holds the index of the level around it, and -1 stands
+	// for the target folder.
+	levels []int
 	// pending is the name of the folder that the last <H3> gave, which the next
 	// <DL> opens.
 	pending string
 	// hasPending reports whether an <H3> is waiting for its <DL>.
 	hasPending bool
-	// folderSeen holds the key of each folder in doc.Folders.
-	folderSeen map[string]struct{}
+	// folderIndex holds the index in doc.Folders of each folder, by its key.
+	folderIndex map[folderKey]int
 	// lastBookmark is the index in doc.Bookmarks of the last <A>, or -1 when the
 	// last <A> is a refusal or there is no <A>.
 	lastBookmark int
@@ -31,8 +32,17 @@ type parser struct {
 	descriptionOK bool
 }
 
+// folderKey is the identity of 1 folder: its parent and its name.
+type folderKey struct {
+	// parent is the index of the parent folder, or -1.
+	parent int
+	// name is the folder's name.
+	name string
+}
+
 // run reads the whole text. It returns ErrTooDeep when a <DL> opens more than
-// MaxLevels levels.
+// MaxLevels levels, and ErrTooManyFolders when the file holds more than
+// MaxFolders folders.
 func (p *parser) run() error {
 	p.lastBookmark = -1
 	for {
@@ -52,7 +62,9 @@ func (p *parser) run() error {
 		case p.src[start+1] == '/':
 			p.endTag()
 		default:
-			p.startTag()
+			if err := p.startTag(); err != nil {
+				return err
+			}
 		}
 	}
 }
@@ -94,13 +106,13 @@ func (p *parser) endTag() {
 
 // startTag reads the start tag at the position, and the text that follows it
 // for <A>, <H3> and <DD>.
-func (p *parser) startTag() {
+func (p *parser) startTag() error {
 	name, next := tagName(p.src, p.pos+1)
 	attrs, next := scanAttrs(p.src, next)
 	p.pos = next
 	switch name {
 	case "dl":
-		p.openList()
+		return p.openList()
 	case "h3":
 		p.descriptionOK = false
 		p.pending = folderName(html.UnescapeString(p.text()))
@@ -114,6 +126,7 @@ func (p *parser) startTag() {
 		}
 		p.descriptionOK = false
 	}
+	return nil
 }
 
 // text returns the text that starts at the position, up to the next tag, and
@@ -125,57 +138,64 @@ func (p *parser) text() string {
 	return text
 }
 
-// current returns the folder path of the innermost open level: empty outside
+// current returns the folder index of the innermost open level: -1 outside
 // every <DL>.
-func (p *parser) current() []string {
+func (p *parser) current() int {
 	if len(p.levels) == 0 {
-		return nil
+		return -1
 	}
 	return p.levels[len(p.levels)-1]
 }
 
 // openList opens 1 level for a <DL>: a folder when an <H3> waits, and the level
-// around it otherwise.
-func (p *parser) openList() {
+// around it otherwise. It returns ErrTooManyFolders for a folder beyond
+// MaxFolders.
+func (p *parser) openList() error {
 	p.descriptionOK = false
-	path := p.current()
+	folder := p.current()
 	if p.hasPending {
-		path = append(append(make([]string, 0, len(path)+1), path...), p.pending)
 		p.hasPending = false
-		key := strings.Join(path, "/")
-		if _, ok := p.folderSeen[key]; !ok {
-			p.folderSeen[key] = struct{}{}
-			p.doc.Folders = append(p.doc.Folders, path)
+		key := folderKey{parent: folder, name: p.pending}
+		index, ok := p.folderIndex[key]
+		if !ok {
+			if len(p.doc.Folders) >= MaxFolders {
+				return ErrTooManyFolders
+			}
+			index = len(p.doc.Folders)
+			p.folderIndex[key] = index
+			p.doc.Folders = append(p.doc.Folders, Folder{Name: key.name, Parent: key.parent})
 		}
+		folder = index
 	}
-	p.levels = append(p.levels, path)
+	p.levels = append(p.levels, folder)
+	return nil
 }
 
 // addLink reads the text of the <A> at the position, and it adds the link to the
 // bookmarks, or to the refusals when its URL breaks a rule.
 func (p *parser) addLink(attrs map[string]string) {
 	title := bookmarkTitle(html.UnescapeString(p.text()))
-	path := p.current()
+	folder := p.current()
 	p.descriptionOK = true
 	p.lastBookmark = -1
 	href, ok := attrs["href"]
 	if !ok {
-		p.doc.Refusals = append(p.doc.Refusals, Refusal{Path: path, Title: title, Reason: "the link has no HREF"})
+		p.doc.Refusals = append(p.doc.Refusals, Refusal{Folder: folder, Title: title, Reason: "the link has no HREF"})
 		return
 	}
 	href = strings.TrimSpace(href)
 	normalized, err := normalizedURL(href)
 	if err != nil {
-		p.doc.Refusals = append(p.doc.Refusals, Refusal{Path: path, URL: href, Title: title, Reason: err.Error()})
+		p.doc.Refusals = append(p.doc.Refusals, Refusal{Folder: folder, URL: href, Title: title, Reason: err.Error()})
 		return
 	}
 	p.lastBookmark = len(p.doc.Bookmarks)
 	p.doc.Bookmarks = append(p.doc.Bookmarks, Bookmark{
-		Path:  path,
-		URL:   normalized,
-		Title: title,
-		Tags:  bookmarkTags(attrs["tags"]),
-		Added: addDate(attrs["add_date"]),
+		Folder: folder,
+		URL:    normalized,
+		Title:  title,
+		Tags:   bookmarkTags(attrs["tags"]),
+		Added:  addDate(attrs["add_date"]),
 	})
 }
 

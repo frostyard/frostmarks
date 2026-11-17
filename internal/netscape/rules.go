@@ -85,14 +85,15 @@ func cut(text string, limit int) string {
 }
 
 // folderName returns the name of 1 folder from the text of its <H3>: on 1 line,
-// each "/" a "-", and "Untitled" for a name that is empty, "." or "..".
+// each "/" a "-", "Untitled" for a name that is empty, "." or "..", and at most
+// MaxNameLen bytes.
 func folderName(text string) string {
 	name := strings.ReplaceAll(oneLine(text), "/", "-")
 	switch name {
 	case "", ".", "..":
 		return untitled
 	}
-	return name
+	return cut(name, MaxNameLen)
 }
 
 // bookmarkTitle returns the title of 1 link from its text: on 1 line, and at

@@ -73,8 +73,9 @@ bookmarklet (`javascript:`), a `data:` or `file:` address, and Firefox's own
 `place:` entries, such as "Most Visited", and it names each one with its
 reason. The rest of the file still comes in.
 
-The file can be at most 32 MiB. A browser's export with thousands of bookmarks
-and their icons stays well below that.
+The file can be at most 32 MiB, with at most 65536 folders and 1024 levels of
+folders. A browser's export with thousands of bookmarks and their icons stays
+well below that.
 
 ## Exit status
 

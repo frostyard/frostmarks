@@ -18,8 +18,9 @@ import (
 // import"). It reads the file before it dials, so that a file that the import
 // refuses stops it before a call. It returns the command's exit code.
 func runImport(ctx context.Context, dial func() (marksv1connect.MarksClient, error), stdout, stderr io.Writer, path, folder string, dryRun, asJSON bool) int {
+	// An error is 1 line, whatever a file name or a path holds.
 	fail := func(err error) int {
-		fmt.Fprintf(stderr, "marksctl: %v\n", err)
+		fmt.Fprintf(stderr, "marksctl: %s\n", oneLine(err.Error()))
 		return exitError
 	}
 	doc, err := readNetscape(path)
@@ -64,6 +65,8 @@ func readNetscape(path string) (*netscape.Document, error) {
 		return nil, fmt.Errorf("the file %s is no Netscape bookmark file", path)
 	case errors.Is(err, netscape.ErrTooDeep):
 		return nil, fmt.Errorf("the file %s nests more than %d levels", path, netscape.MaxLevels)
+	case errors.Is(err, netscape.ErrTooManyFolders):
+		return nil, fmt.Errorf("the file %s holds more than %d folders", path, netscape.MaxFolders)
 	case err != nil:
 		return nil, fmt.Errorf("read the file %s: %w", path, err)
 	}
