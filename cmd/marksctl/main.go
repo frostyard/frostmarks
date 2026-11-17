@@ -57,6 +57,7 @@ The commands are:
   rename-folder    PATH NEW_PATH
   delete-folder    PATH
   list-folders     [-folder F] [-recursive]
+  import           FILE [-folder F] [-dry-run] [-json]
   mcp              serve the MCP tools on stdin and stdout
   help             print this usage
 
@@ -370,6 +371,16 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 		return printResult(stdout, stderr, *asJSON, response, func(out io.Writer) error {
 			return printFolders(out, response.GetFolders())
 		})
+
+	case "import":
+		flags := flag.NewFlagSet("marksctl import", flag.ContinueOnError)
+		folder := flags.String("folder", "", "the target folder (default /)")
+		dryRun := flags.Bool("dry-run", false, "print the plan, and write nothing")
+		localJSON := flags.Bool("json", false, "print the result as JSON")
+		if !parse(flags, 1) {
+			return exitUsage
+		}
+		return runImport(ctx, dial, stdout, stderr, positional[0], *folder, *dryRun, *asJSON || *localJSON)
 
 	case "mcp":
 		if len(rest) != 0 {

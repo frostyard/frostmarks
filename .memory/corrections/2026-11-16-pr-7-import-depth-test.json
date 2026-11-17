@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-16",
+  "scope": "netscape",
+  "correction": "The depth limit of the parser keeps its own test at both boundaries, with folders and with bare lists: a rewrite of the tests for another limit must not drop the test of MaxLevels.",
+  "evidence": "frostyard/frostmarks#7, cross-review (openai/gpt-6.1-sol) of head c89c940, finding 5",
+  "promoted_to": "TestTooDeep (internal/netscape)"
+}

@@ -29,6 +29,7 @@ nav:
       - Install: getting-started/install.md
   - Guides:
       - Use marksctl: guides/marksctl.md
+      - Import your bookmarks: guides/import.md
       - Connect an MCP client: guides/mcp-client.md
       - Folders and permissions: guides/folders-and-permissions.md
       - Run on lodge: guides/lodge.md

@@ -68,6 +68,16 @@ indented, instead of a table. Run `marksctl help` for the list of commands.
 A folder path starts with `/`, such as `/reading/2026`, and `/` is the root
 folder. `-folder` defaults to `/`.
 
+### Import
+
+| Command | Arguments | What it does |
+| --- | --- | --- |
+| `import` | `FILE [-folder] [-dry-run] [-json]` | add the bookmarks and folders of a browser's HTML export; a bookmark already in its folder is skipped |
+
+`-dry-run` prints the plan and writes nothing. The file is at most 32 MiB, and
+only `http` and `https` addresses come in. See
+[Import your bookmarks](../guides/import.md).
+
 ### MCP
 
 | Command | What it does |
@@ -85,6 +95,7 @@ folder. `-folder` defaults to `/`.
 ## See also
 
 - [Use marksctl](../guides/marksctl.md) for a task with each command.
+- [Import your bookmarks](../guides/import.md) for the `import` command.
 - [Connect an MCP client](../guides/mcp-client.md) for the `mcp` command.
 - [Folders and permissions](../guides/folders-and-permissions.md) for what a
   folder decides.
