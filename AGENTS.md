@@ -149,7 +149,7 @@ app: `frostmarksd -lodge`, the web UI, the save page and the `.deb`.
   socket's mode to `0600`.
 - The 8 `.memory/corrections/*.json` files of the template are permanent.
 
-## Releases
+## Releases and dependencies
 
 - **Who tags: Brian.** Agents never tag, push tags or release. A due release
   goes to Brian as an ask.
@@ -162,12 +162,21 @@ app: `frostmarksd -lodge`, the web UI, the save page and the `.deb`.
   `make deb`, which stages the tree (`internal/cmd/stage`), builds
   `frostyard-frostmarks_<version>_amd64.deb` with the nFPM that `mise.toml`
   pins, and checks it (`internal/cmd/debcheck`); the release job attests the
-  package and attaches it to the GitHub release. Until the first tag, the
-  install in `README.md` uses `@latest`.
+  package and attaches it to the GitHub release. The `go install` lines of
+  `README.md` use `@latest`, the newest tag.
 - The tags are the record of each release, so this file names no latest
   version. The newest 1 is the first line of
   `git ls-remote --tags --refs --sort=-v:refname origin 'refs/tags/v[0-9]*'`,
   or GitHub > frostyard/frostmarks > Tags.
+- Internal dependencies: `github.com/frostyard/hearth` in `go.mod`, as a
+  `require` and as the `tool`s of its CLI and its 4 plugins;
+  `@frostyard/lodge-client` and `@frostyard/lodge-ui` in `web/package.json`,
+  each a frostyard/lodge tag (`client/vX.Y.Z`, `ui/vX.Y.Z`);
+  `.github/workflows/risk-paths.yml` pins frostyard/core's
+  `.github/workflows/pr-triage.yml` at a commit, since core has no release
+  tags.
+- Who uses this repository: no frostyard repository depends on it in code.
+  lodge hosts it as the app `marks` (lodge's `docs/runbook-pilot.md`).
 
 ## Repository baseline
 
