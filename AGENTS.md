@@ -95,6 +95,17 @@ app: `frostmarksd -lodge`, the web UI, the save page and the `.deb`.
   `make web-generate`, `make web-fmt`. A change of the proto runs both
   `make generate` (host) and `make web-generate` (nsl), and commits `gen/` and
   `web/src/gen/`.
+- **A pocketd agent session cannot run `nsl`**: pocketd's sandbox hides the
+  user systemd bus that nsl drives its machines through
+  ([frostyard/pocketgo#96](https://github.com/frostyard/pocketgo/issues/96),
+  pocketgo's
+  [ADR-0012](https://github.com/frostyard/pocketgo/blob/main/docs/adr/0012-run-tools-without-approval-in-a-sandbox-that-hides-pocketds-files.md)).
+  In such a session, run `make ci` with `web-check` skipped: the Makefile has
+  no variable for that, so run the others by name, `make verify gen-check race
+  cross corrections-base manifest-check`. Never set `IN_NSL='sh -c'` there,
+  which runs Node and pnpm on the host. The report names `web-check` as
+  skipped; it then runs only in CI. A change that needs `make web-generate`
+  cannot write `web/src/gen/` there, so the report says it is still owed.
 - `make check` formats first, then verifies. `mise install` provisions golangci-lint, buf,
   protoc-gen-go and svu; Go comes from `go.mod`.
 - `make verify` runs `go mod tidy -diff`, `go vet ./...`, a gofmt check, the
