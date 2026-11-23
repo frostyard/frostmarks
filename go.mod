@@ -8,7 +8,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/nats-io/nats-server/v2 v2.15.3
-	github.com/nats-io/nats.go v1.55.0
+	github.com/nats-io/nats.go v1.56.0
 	go.yaml.in/yaml/v3 v3.0.6
 	google.golang.org/protobuf v1.36.12
 	modernc.org/sqlite v1.62.0
