@@ -11,7 +11,7 @@ require (
 	github.com/nats-io/nats.go v1.56.0
 	go.yaml.in/yaml/v3 v3.0.6
 	google.golang.org/protobuf v1.36.12
-	modernc.org/sqlite v1.62.0
+	modernc.org/sqlite v1.63.0
 )
 
 require (
